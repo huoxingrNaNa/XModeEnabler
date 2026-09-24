@@ -1,0 +1,2 @@
+# 复制本文件为 local.properties，并填入你自己的 Android SDK 路径
+sdk.dir=/path/to/your/android-sdk
