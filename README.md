@@ -97,7 +97,7 @@ X模式生效中(跳过)  |  模式=3  |  补投1次/跳过15次
 - 前台包名探测改为设备侧管道（`dumpsys | grep | head`），每次只回传一行，替换掉原来每 5 秒拉回几百 KB 全量 dumpsys 的做法
 - 自适应心跳（游戏中 5s / 待机 15s）、单线程调度器、通知按需刷新、UI 仅前台刷新
 - 新增「打开游戏助手自动化测试」与「忽略电池优化」入口；状态区实时显示阶段/模式/补投统计
-- release 开启 R8 + 资源收缩（54.2 KB → 31.9 KB）；新增自适应图标与 GitHub Actions CI
+- release 开启 R8 + 资源收缩（构建产物：debug ≈ 54 KB / release ≈ 42 KB）；新增自适应图标与 GitHub Actions CI
 
 详见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
 
@@ -139,15 +139,20 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ```
 XModeEnabler/
+├── .github/
+│   └── workflows/android.yml          # CI：push 后自动构建 debug + release
 ├── app/
 │   ├── build.gradle
+│   ├── proguard-rules.pro             # R8 混淆保留规则
 │   └── src/main/
 │       ├── AndroidManifest.xml
-│       └── java/com/operit/xmode/
-│           ├── MainActivity.java      # 界面 + 授权 + 启动/停止
-│           └── MonitorService.java    # 事件驱动核心（前台服务）
+│       ├── java/com/operit/xmode/
+│       │   ├── MainActivity.java      # 界面 + 授权 + 启动/停止
+│       │   └── MonitorService.java    # 事件驱动核心（前台服务）
+│       └── res/                       # 自适应图标 + 配色
 ├── docs/
-│   └── REVERSE_NOTES.md               # 逆向分析与实测记录
+│   ├── REVERSE_NOTES.md               # 逆向分析与实测记录
+│   └── OPTIMIZATIONS.md               # v1.1 优化记录
 ├── gradle/wrapper/                    # Gradle Wrapper
 ├── build.gradle
 ├── settings.gradle

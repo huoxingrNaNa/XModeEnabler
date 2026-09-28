@@ -11,22 +11,55 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+
+      # 注意：这里【不再】使用 android-actions/setup-android@v3。
+      # 该 action 默认向 sdkmanager 请求 'tools' 包，而 Google 已从 SDK 仓库移除该包，
+      # 会稳定报 "Failed to find package 'tools'" 并以 exit code 1 失败（v1.1 首次 CI 即因此挂掉）。
+      # 改为复用 runner 预装的 Android SDK，并按需补齐 compileSdk 34 所需的平台与构建工具。
+      - name: Set up Android SDK
+        run: |
+          SDKMANAGER="$(command -v sdkmanager 2>/dev/null || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            for c in \
+              "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+              "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+              /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager; do
+              if [ -x "$c" ]; then SDKMANAGER="$c"; break; fi
+            done
+          fi
+          echo "SDKMANAGER=$SDKMANAGER"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          if [ -n "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            "$SDKMANAGER" "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
+          else
+            echo "sdkmanager not found; falling back to runner preinstalled SDK"
+          fi
+          echo '--- platforms ---'; ls "$ANDROID_HOME/platforms" 2>/dev/null || true
+          echo '--- build-tools ---'; ls "$ANDROID_HOME/build-tools" 2>/dev/null || true
+
       - name: Make gradlew executable
         run: chmod +x gradlew
+
       - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
       - name: Build release APK (R8)
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: XModeEnabler-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload release APK (unsigned)
         uses: actions/upload-artifact@v4
         with:
