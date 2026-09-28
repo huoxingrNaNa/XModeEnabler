@@ -97,7 +97,7 @@ X模式生效中(跳过)  |  模式=3  |  补投1次/跳过15次
 - 前台包名探测改为设备侧管道（`dumpsys | grep | head`），每次只回传一行，替换掉原来每 5 秒拉回几百 KB 全量 dumpsys 的做法
 - 自适应心跳（游戏中 5s / 待机 15s）、单线程调度器、通知按需刷新、UI 仅前台刷新
 - 新增「打开游戏助手自动化测试」与「忽略电池优化」入口；状态区实时显示阶段/模式/补投统计
-- release 开启 R8 + 资源收缩（构建产物：debug ≈ 54 KB / release ≈ 42 KB）；新增自适应图标与 GitHub Actions CI
+- release 开启 R8 + 资源收缩（仓库 Release 内的设备侧构建包 ≈ 42 KB；CI 自动构建产物 ≈ 31 KB）；新增自适应图标与 GitHub Actions CI
 
 详见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
 
