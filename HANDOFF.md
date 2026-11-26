@@ -12,7 +12,7 @@
 |---|---|
 | 仓库 | https://github.com/huoxingrNaNa/XModeEnabler （Public / `main`） |
 | 当前版本 | `v1.5`（`versionCode 6` / `versionName 1.5`） |
-| 关键提交 | `c3fa384`（v1.2 ~ v1.5 全部改动）、`ff34d8a`（v1.1 文档收尾） |
+| 关键提交 | `cfbc81f`（v1.2 ~ v1.5 全部改动）、`ff34d8a`（v1.1 文档收尾） |
 | tag / Release | `v1.5`，Release 附加 `XModeEnabler-v1.5-release.apk` |
 | 旧版本 | `v1.1` Release 保留（`XModeEnabler-v1.1-release.apk`，debug 签名） |
 
