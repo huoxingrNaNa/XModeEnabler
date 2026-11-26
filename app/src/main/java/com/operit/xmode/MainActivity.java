@@ -15,6 +15,11 @@ import android.os.Process;
 import android.provider.Settings;
 import android.widget.Toast;
 
+import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 import rikka.shizuku.Shizuku;
 
 /**
@@ -34,6 +39,14 @@ public class MainActivity extends Activity implements XModeUi.Listener {
 
     private static final int REQ_SHIZUKU = 1001;
     private static final int REQ_NOTIFICATION = 1002;
+    /** 导出诊断日志的系统「另存为」请求码。 */
+    private static final int REQ_EXPORT = 1003;
+
+    /** 导出过程中暂存的文本（等用户选完保存位置再写）。 */
+    private String pendingExport;
+
+    /** 「手动投递」进行中标记，防止连点并发投递。 */
+    private volatile boolean fireBusy = false;
 
     /** 界面轮询间隔：仅在 onResume ~ onPause 之间运行。 */
     private static final long TICK_MS = 1500L;
@@ -208,6 +221,11 @@ public class MainActivity extends Activity implements XModeUi.Listener {
     /** 「手动投递一次 X 模式」：fire() 阻塞，放子线程。 */
     @Override
     public void onFireOnce() {
+        if (fireBusy) {
+            toast("上一次投递还没结束，请稍等");
+            return;
+        }
+        fireBusy = true;
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -215,6 +233,7 @@ public class MainActivity extends Activity implements XModeUi.Listener {
                 main.post(new Runnable() {
                     @Override
                     public void run() {
+                        fireBusy = false;
                         toast(ok ? "已投递 mode=3（游戏在前台才生效）"
                                 : "投递失败：" + MonitorService.LAST_ERROR);
                         render();
@@ -258,6 +277,64 @@ public class MainActivity extends Activity implements XModeUi.Listener {
         } catch (Throwable t) {
             toast("没有可用的浏览器：" + t);
         }
+    }
+
+    /** 切换诊断日志记录开关（v1.6）。 */
+    @Override
+    public void onToggleLog() {
+        MonitorService.setLogEnabled(this, !MonitorService.LOG_ENABLED);
+        toast(MonitorService.LOG_ENABLED ? "诊断日志：已开启" : "诊断日志：已关闭（仍写系统 logcat）");
+        render();
+    }
+
+    /** 导出诊断日志：走系统「另存为」，让用户自己选位置（无需存储权限）。 */
+    @Override
+    public void onExportLog() {
+        String text = MonitorService.exportText();
+        String name = "xmode-log-"
+                + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".txt";
+        try {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TITLE, name);
+            pendingExport = text;
+            startActivityForResult(intent, REQ_EXPORT);
+        } catch (Throwable t) {
+            pendingExport = null;
+            toast("无法打开保存面板：" + t);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_EXPORT) return;
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) {
+            pendingExport = null;
+            toast("已取消导出");
+            return;
+        }
+        final String text = pendingExport;
+        pendingExport = null;
+        if (text == null) return;
+        try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
+            if (out == null) throw new IllegalStateException("openOutputStream returned null");
+            out.write(text.getBytes("UTF-8"));
+            out.flush();
+            toast("已导出诊断日志");
+        } catch (Throwable t) {
+            toast("写入失败：" + t);
+        }
+    }
+
+    /** 返回键：许可证页 → 关于页 → 首页 → 退出。 */
+    @Override
+    public void onBackPressed() {
+        if (ui != null && ui.handleBack()) {
+            return;
+        }
+        super.onBackPressed();
     }
 
     // ================================================================
@@ -309,6 +386,7 @@ public class MainActivity extends Activity implements XModeUi.Listener {
         s.cpuCurKhz = MonitorService.CPU_CUR_KHZ;
         s.cpuMaxKhz = MonitorService.CPU_MAX_KHZ;
         s.hotZoneTenths = MonitorService.HOT_ZONE_TENTHS;
+        s.logEnabled = MonitorService.LOG_ENABLED;
         return s;
     }
 

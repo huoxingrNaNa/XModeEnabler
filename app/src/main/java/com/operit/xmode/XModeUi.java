@@ -90,6 +90,12 @@ public class XModeUi {
 
         /** 在浏览器打开源码仓库。 */
         void onOpenRepo();
+
+        /** 切换诊断日志记录开关。 */
+        void onToggleLog();
+
+        /** 把诊断日志导出为文本文件。 */
+        void onExportLog();
     }
 
     /** 渲染所需的数据，全部由功能实现方填充。 */
@@ -130,6 +136,8 @@ public class XModeUi {
         public int cpuMaxKhz = -1;
         /** 最热热区温度，单位 0.1℃；<=0 表示未知。 */
         public int hotZoneTenths = -1;
+        /** 诊断日志记录开关（v1.6）。 */
+        public boolean logEnabled = true;
     }
 
     private static final int MP = ViewGroup.LayoutParams.MATCH_PARENT;
@@ -177,6 +185,7 @@ public class XModeUi {
     private TextView statHot;
     private LinearLayout wlBox;
     private TextView logView;
+    private TextView logToggle;
     private TextView aboutVersion;
     private String lastWlSig = "";
     private String lastLogSig = "";
@@ -269,7 +278,7 @@ public class XModeUi {
 
         // ── v1.3：版本号 / 实时状态 / 白名单 / 诊断日志 ──
         String ver = (state.versionName == null || state.versionName.isEmpty())
-                ? "1.5" : state.versionName;
+                ? "1.6" : state.versionName;
         if (subTitle != null) {
             subTitle.setText("v" + ver + " · ColorOS 游戏助手");
         }
@@ -306,6 +315,13 @@ public class XModeUi {
 
         refreshWhitelist(state);
         refreshLogs(state);
+
+        if (logToggle != null) {
+            boolean on = state.logEnabled;
+            logToggle.setText(on ? "记录开" : "记录关");
+            logToggle.setTextColor(on ? ACCENT : IDLE);
+            logToggle.setBackground(pillBg(alpha(on ? ACCENT : IDLE, on ? 0x1E : 0x18)));
+        }
 
         styleMainButton(state.monitoring);
     }
@@ -369,6 +385,9 @@ public class XModeUi {
             sb.append(logs.get(i));
         }
         String text = sb.length() == 0 ? "暂无事件" : sb.toString();
+        if (!state.logEnabled) {
+            text = "记录已关闭（不再写入缓冲区，仍写系统 logcat）\n" + text;
+        }
         if (text.equals(lastLogSig)) return;
         lastLogSig = text;
         logView.setText(text);
@@ -598,6 +617,19 @@ public class XModeUi {
         return tab;
     }
 
+    /** 系统返回键：许可证页 → 关于页 → 首页；返回 false 表示交给系统处理（退出）。 */
+    public boolean handleBack() {
+        if (currentPage == 2) {
+            selectPage(1);
+            return true;
+        }
+        if (currentPage == 1) {
+            selectPage(0);
+            return true;
+        }
+        return false;
+    }
+
     /** 切换页面（0 首页 / 1 关于 / 2 许可证）。 */
     private void selectPage(int page) {
         currentPage = page;
@@ -743,7 +775,7 @@ public class XModeUi {
         header.addView(titles, titlesLp);
 
         titles.addView(text("X模式助手", 17, TEXT_MAIN, true));
-        subTitle = text("v1.5 · ColorOS 游戏助手", 11, TEXT_SUB, false);
+        subTitle = text("v1.6 · ColorOS 游戏助手", 11, TEXT_SUB, false);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(WC, WC);
         subLp.topMargin = dp(3);
         titles.addView(subTitle, subLp);
@@ -1063,6 +1095,38 @@ public class XModeUi {
         head.addView(text("最近事件", 12, TEXT_MAIN, true));
         head.addView(new View(context), new LinearLayout.LayoutParams(0, 1, 1f));
 
+        // 记录开关（v1.6）
+        logToggle = text("记录开", 10.5f, ACCENT, true);
+        logToggle.setPadding(dp(8), dp(4), dp(8), dp(4));
+        logToggle.setBackground(pillBg(alpha(ACCENT, 0x1E)));
+        logToggle.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (listener != null) {
+                    listener.onToggleLog();
+                }
+            }
+        });
+        LinearLayout.LayoutParams toggleLp = new LinearLayout.LayoutParams(WC, WC);
+        toggleLp.rightMargin = dp(6);
+        head.addView(logToggle, toggleLp);
+
+        // 导出（v1.6）
+        TextView export = text("导出", 10.5f, TEXT_SUB, true);
+        export.setPadding(dp(8), dp(4), dp(8), dp(4));
+        export.setBackground(pillBg(0x14FFFFFF));
+        export.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (listener != null) {
+                    listener.onExportLog();
+                }
+            }
+        });
+        LinearLayout.LayoutParams exportLp = new LinearLayout.LayoutParams(WC, WC);
+        exportLp.rightMargin = dp(6);
+        head.addView(export, exportLp);
+
         TextView clear = text("清空", 11.5f, TEXT_SUB, true);
         clear.setPadding(dp(10), dp(5), dp(10), dp(5));
         clear.setBackground(pillBg(0x14FFFFFF));
@@ -1095,7 +1159,7 @@ public class XModeUi {
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setBackground(cardBg(22, CARD_ALT, STROKE));
 
-        aboutVersion = addKv(card, "版本", "v1.5");
+        aboutVersion = addKv(card, "版本", "v1.6");
         addKv(card, "作者", AUTHOR);
         addKv(card, "许可", "MIT License");
         addKv(card, "包名", "com.operit.xmode");

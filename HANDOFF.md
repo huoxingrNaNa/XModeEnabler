@@ -1,4 +1,4 @@
-# HANDOFF · XModeEnabler v1.5
+# HANDOFF · XModeEnabler v1.6
 
 交接说明：便于下一位维护者 / 验证者快速接手。原理、逆向细节与用法见
 [`README.md`](README.md) 与 [`docs/REVERSE_NOTES.md`](docs/REVERSE_NOTES.md)。
@@ -11,10 +11,10 @@
 | 项 | 值 |
 |---|---|
 | 仓库 | https://github.com/huoxingrNaNa/XModeEnabler （Public / `main`） |
-| 当前版本 | `v1.5`（`versionCode 6` / `versionName 1.5`） |
+| 当前版本 | `v1.6`（`versionCode 7` / `versionName 1.6`） |
 | 关键提交 | `cfbc81f`（v1.2 ~ v1.5 全部改动）、`ff34d8a`（v1.1 文档收尾） |
-| tag / Release | `v1.5`，Release 附加 `XModeEnabler-v1.5-release.apk` |
-| 旧版本 | `v1.1` Release 保留（`XModeEnabler-v1.1-release.apk`，debug 签名） |
+| tag / Release | `v1.6`，Release 附加 `XModeEnabler-v1.6-release.apk` + `.sha256` |
+| 旧版本 | `v1.1`（debug 签名）、`v1.5` Release 保留 |
 
 ## 2. 构建
 
@@ -44,7 +44,7 @@ CI 无签名密钥，产出的 release 包为未签名。
 - 「使用情况访问」权限。
 - 建议「忽略电池优化」；Android 13+ 还需允许**通知权限**（前台服务通知，v1.3 起通知带操作按钮）。
 
-## 5. 功能清单（v1.5）
+## 5. 功能清单（v1.6）
 
 底部两个标签页：**首页 / 关于**。
 
@@ -54,7 +54,7 @@ CI 无签名密钥，产出的 release 包为未签名。
 - 准备工作：Shizuku、使用情况访问、自动化测试开关、忽略电池优化
 - 监控：启动/停止常驻监控、手动投递一次
 - 游戏白名单：为空表示对所有游戏生效；玩过一次后可从「最近检测到的游戏」加入
-- 诊断日志：最近 12 条（内部保留 60 条），含会话起落、前台应用、助手模式变化、投递失败原因
+- 诊断日志：最近 12 条（内部保留 60 条），含会话起落、前台应用、助手模式变化、投递失败原因；带「记录开/关」开关与「导出」（SAF 另存为，无需存储权限）
 - 工作原理：事件驱动 + 90 秒安全网说明
 
 **关于**
@@ -81,19 +81,19 @@ CI 无签名密钥，产出的 release 包为未签名。
 - 单次投递可维持约 44 秒，因此只监听助手日志，在模式被改回时补投，另有 90 秒安全网。
 - 白名单与已识别游戏存 `SharedPreferences`（`xmode_prefs`）。
 
-## 8. APK 核验事实（v1.5 产物）
+## 8. APK 核验事实（v1.6 产物）
 
 | 项 | 值 |
 |---|---|
 | package | `com.operit.xmode` |
-| version | `versionCode 6` / `versionName 1.5` |
+| version | `versionCode 7` / `versionName 1.6` |
 | sdk | minSdk 26 / targetSdk 34 |
 | 应用名 | X模式助手 |
 | 签名 | v2（APK Signature Scheme v2）= true；RSA 2048 |
 | 证书 DN | `CN=XModeEnabler, OU=Personal, O=Personal, L=Unknown, ST=Unknown, C=CN` |
 | 证书 SHA-256 | `c2f87c95ba6c289f406b1922803e15c1a6ace75e73b78794ebb7eab7c46ba625` |
-| APK SHA-256 | `e21526dd1d0a34a3a189c8984117f8a5bea7b05cc3e351f29763039695ed8bee` |
-| 体积 | release 52352 B（R8 + 资源收缩后） |
+| APK SHA-256 | `747bfc1a67537590cd3016c4970b03765bc50246e1eecc3d6cf15a1b3564dc5e` |
+| 体积 | release 54156 B（R8 + 资源收缩后） |
 
 ## 9. 真机验证记录
 
@@ -110,6 +110,8 @@ CI 无签名密钥，产出的 release 包为未签名。
 - 强依赖 ColorOS 游戏助手内部实现，助手更新即可能失效（类名 / action / SharedPreferences key / 日志格式）。
 - X 模式为官方最激进的性能策略，官方要求配散热背夹；第三方制冷不足时可能高温降频。
 - 无自动化测试（无 `test/`、`androidTest/`）。
+- 无开机自启（按需求排除）；重启手机后需手动点「启动常驻监控」。
+- 日志导出依赖系统 DocumentsUI；极简 ROM 若阉割了 SAF 面板会提示打开失败。
 - 隐藏页里的「自动化测试」状态读不到（私有存储），App 固定显示「打开开关」，**不伪造已完成状态**。
 - 白名单只按前台游戏包名过滤；不改变助手自身的模式判定逻辑。
 

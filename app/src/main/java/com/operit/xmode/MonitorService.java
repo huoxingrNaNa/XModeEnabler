@@ -80,7 +80,11 @@ public class MonitorService extends Service {
     private static final String PREF = "xmode_prefs";
     private static final String K_WL = "whitelist";
     private static final String K_GAMES = "known_games";
+    private static final String K_LOG = "log_enabled";
     private static final int LOG_MAX = 60;
+
+    /** 诊断日志开关（v1.6）：关闭后不再向缓冲区追加事件（仍写系统 logcat）。 */
+    public static volatile boolean LOG_ENABLED = true;
 
     private static final ArrayDeque<String> LOG_Q = new ArrayDeque<>();
     private static SharedPreferences prefs;
@@ -133,6 +137,7 @@ public class MonitorService extends Service {
             Collections.sort(wl);
             WHITELIST = wl;
             KNOWN_GAMES = new ArrayList<>(prefs.getStringSet(K_GAMES, new LinkedHashSet<String>()));
+            LOG_ENABLED = prefs.getBoolean(K_LOG, true);
         } catch (Throwable t) {
             Log.w(TAG, "initPrefs failed", t);
         }
@@ -141,6 +146,10 @@ public class MonitorService extends Service {
     /** 追加一条诊断日志（同时写 logcat，便于外部排查）。 */
     public static void logEvent(String msg) {
         if (msg == null) return;
+        if (!LOG_ENABLED) {
+            Log.i(TAG, "evt(off) " + msg);
+            return;
+        }
         String line = new SimpleDateFormat("HH:mm:ss", Locale.US).format(new Date()) + "  " + msg;
         synchronized (LOG_Q) {
             LOG_Q.addLast(line);
@@ -156,6 +165,51 @@ public class MonitorService extends Service {
             LOG_Q.clear();
             LOGS = Collections.emptyList();
         }
+    }
+
+    /** 开 / 关诊断日志（持久化）。关闭只影响缓冲区，系统 logcat 仍会记录。 */
+    public static synchronized void setLogEnabled(Context c, boolean on) {
+        LOG_ENABLED = on;
+        SharedPreferences p = ensurePrefs(c);
+        if (p != null) p.edit().putBoolean(K_LOG, on).apply();
+        if (on) {
+            logEvent("诊断日志已开启");
+        } else {
+            Log.i(TAG, "diagnostics buffer disabled");
+        }
+    }
+
+    /** 导出用文本：当前状态摘要 + 全部缓冲区事件。 */
+    public static String exportText() {
+        StringBuilder sb = new StringBuilder();
+        String now = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date());
+        sb.append("X模式助手 · 诊断日志\n")
+                .append("导出时间: ").append(now).append('\n')
+                .append("记录开关: ").append(LOG_ENABLED ? "开" : "关").append('\n')
+                .append("阶段: ").append(PHASE).append('\n')
+                .append("助手模式: ").append(LAST_APPLIED).append('\n')
+                .append("补投 / 跳过: ").append(FIRE_COUNT).append(" / ").append(SKIP_COUNT).append('\n')
+                .append("电池温度: ").append(BATTERY_TENTHS > 0
+                        ? String.format(Locale.US, "%.1f℃", BATTERY_TENTHS / 10f) : "—").append('\n')
+                .append("CPU 最高簇: ").append(CPU_CUR_KHZ > 0
+                        ? String.format(Locale.US, "%.2f GHz / %.2f GHz",
+                        CPU_CUR_KHZ / 1000000f, CPU_MAX_KHZ / 1000000f) : "—").append('\n')
+                .append("最热热区: ").append(HOT_ZONE_TENTHS > 0
+                        ? String.format(Locale.US, "%.1f℃", HOT_ZONE_TENTHS / 10f) : "—").append('\n')
+                .append("白名单: ").append(WHITELIST.isEmpty() ? "(空，对所有游戏生效)" : WHITELIST.toString())
+                .append('\n')
+                .append("最近错误: ").append(LAST_ERROR.isEmpty() ? "无" : LAST_ERROR).append('\n')
+                .append("---------------- 事件 ----------------\n");
+        List<String> copy;
+        synchronized (LOG_Q) {
+            copy = new ArrayList<>(LOG_Q);
+        }
+        if (copy.isEmpty()) {
+            sb.append("(无事件)\n");
+        } else {
+            for (String line : copy) sb.append(line).append('\n');
+        }
+        return sb.toString();
     }
 
     public static boolean isWhitelisted(String pkg) {
