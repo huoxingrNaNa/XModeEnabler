@@ -17,7 +17,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@android:style/Theme.Material.NoActionBar">
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -34,6 +34,9 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keep game X-Mode enabled while a game is foreground" />
         </service>
+        <receiver
+            android:name=".NotifyActionReceiver"
+            android:exported="false" />
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
             android:authorities="${applicationId}.shizuku"

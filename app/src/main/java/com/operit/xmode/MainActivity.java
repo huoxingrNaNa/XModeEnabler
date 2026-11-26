@@ -13,33 +13,39 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
 import android.provider.Settings;
-import android.view.View;
-import android.widget.Button;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import rikka.shizuku.Shizuku;
 
 /**
- * 控制面板（v1.1）：
- *  - 仅在前台时 1.5s 刷新一次状态（v1.0 会一直刷新到 onDestroy，浪费电量）；
- *  - 状态区直接读 MonitorService 的静态字段，能实时看到阶段/模式/补投统计；
- *  - 新增「打开游戏助手开发者选项」与「忽略电池优化」两个入口。
+ * 宿主 Activity：功能层接线。
+ *
+ * <p>职责边界：
+ * <ul>
+ *   <li>界面全部交给 {@link XModeUi}，本文件不构建任何 View、不改任何文案/颜色；</li>
+ *   <li>只做两件事：把用户点击转成真实动作（6 个回调），以及把系统/服务状态
+ *       打包成 {@link XModeUi.State} 交给 {@link XModeUi#render}。</li>
+ * </ul>
+ *
+ * <p>状态出口只有一条：{@code ui.render(snapshot())}，由 {@code onResume} 起的
+ * 1.5s 轮询驱动；授权回调里额外立即渲染一次。
  */
-public class MainActivity extends Activity {
+public class MainActivity extends Activity implements XModeUi.Listener {
 
     private static final int REQ_SHIZUKU = 1001;
+    private static final int REQ_NOTIFICATION = 1002;
 
-    private TextView status;
-    private final Handler ui = new Handler(Looper.getMainLooper());
+    /** 界面轮询间隔：仅在 onResume ~ onPause 之间运行。 */
+    private static final long TICK_MS = 1500L;
+
+    private XModeUi ui;
+    private final Handler main = new Handler(Looper.getMainLooper());
 
     private final Runnable ticker = new Runnable() {
         @Override
         public void run() {
-            refresh();
-            ui.postDelayed(this, 1500);
+            render();
+            main.postDelayed(this, TICK_MS);
         }
     };
 
@@ -47,7 +53,12 @@ public class MainActivity extends Activity {
             new Shizuku.OnRequestPermissionResultListener() {
                 @Override
                 public void onRequestPermissionResult(int requestCode, int grantResult) {
-                    refresh();
+                    main.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            render();
+                        }
+                    });
                 }
             };
 
@@ -55,62 +66,24 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int p = dp(16);
-        root.setPadding(p, p, p, p);
+        // 深色窗口配色（纯外观，与 UI 层风格一致）
+        getWindow().setStatusBarColor(0xFF070B14);
+        getWindow().setNavigationBarColor(0xFF070B14);
 
-        TextView title = new TextView(this);
-        title.setText("X模式助手  v1.1\n（第三方散热器也能开官方 X 模式）");
-        title.setTextSize(17);
-        root.addView(title);
+        ui = new XModeUi(this, this);
+        setContentView(ui.root());
+        MonitorService.initPrefs(this);
+        render();
 
-        status = new TextView(this);
-        status.setTextSize(13);
-        status.setPadding(0, dp(12), 0, dp(12));
-        root.addView(status);
-
-        root.addView(btn("① 授权 Shizuku", new View.OnClickListener() {
-            @Override public void onClick(View v) { reqShizuku(); }
-        }));
-        root.addView(btn("② 授权「使用情况访问」", new View.OnClickListener() {
-            @Override public void onClick(View v) { openUsageAccess(); }
-        }));
-        root.addView(btn("③ 打开游戏助手「自动化测试」开关", new View.OnClickListener() {
-            @Override public void onClick(View v) { openDevOptions(); }
-        }));
-        root.addView(btn("④ 启动常驻监控", new View.OnClickListener() {
-            @Override public void onClick(View v) { startMonitor(); }
-        }));
-        root.addView(btn("⑤ 停止监控", new View.OnClickListener() {
-            @Override public void onClick(View v) { stopMonitor(); }
-        }));
-        root.addView(btn("手动投递一次 X模式（测试）", new View.OnClickListener() {
-            @Override public void onClick(View v) { fireOnce(); }
-        }));
-        root.addView(btn("忽略电池优化（防后台被杀）", new View.OnClickListener() {
-            @Override public void onClick(View v) { requestIgnoreBattery(); }
-        }));
-
-        TextView tip = new TextView(this);
-        tip.setTextSize(12);
-        tip.setPadding(0, dp(14), 0, 0);
-        tip.setText("用法：\n"
-                + "1. 依次点 ①②③（③ 里把「自动化测试」打开，其余开关别动）\n"
-                + "2. 点 ④ 启动常驻监控，然后正常玩游戏\n\n"
-                + "本应用是事件驱动的：监听游戏助手日志，只在它把模式改成非 X 模式时才补投一枪"
-                + "（另加 90 秒安全网），无游戏时 15 秒一次待机心跳。");
-        root.addView(tip);
-
-        ScrollView sv = new ScrollView(this);
-        sv.addView(root);
-        setContentView(sv);
-
-        Shizuku.addRequestPermissionResultListener(permListener);
+        try {
+            Shizuku.addRequestPermissionResultListener(permListener);
+        } catch (Throwable ignored) {
+        }
 
         if (Build.VERSION.SDK_INT >= 33) {
             try {
-                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 1002);
+                requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},
+                        REQ_NOTIFICATION);
             } catch (Throwable ignored) {
             }
         }
@@ -119,52 +92,231 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        ui.removeCallbacks(ticker);
-        ui.post(ticker);
+        main.removeCallbacks(ticker);
+        main.post(ticker);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        ui.removeCallbacks(ticker);
+        main.removeCallbacks(ticker);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        ui.removeCallbacksAndMessages(null);
-        Shizuku.removeRequestPermissionResultListener(permListener);
+        main.removeCallbacksAndMessages(null);
+        try {
+            Shizuku.removeRequestPermissionResultListener(permListener);
+        } catch (Throwable ignored) {
+        }
     }
 
-    private void refresh() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Shizuku: ");
+    // ================================================================
+    // 6 个功能回调
+    // ================================================================
+
+    /** 第 1 行 / 右上胶囊：请求或检查 Shizuku 授权。 */
+    @Override
+    public void onShizuku() {
         try {
-            if (Shizuku.pingBinder()) {
-                sb.append(Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-                        ? "已授权" : "未授权");
+            if (!Shizuku.pingBinder()) {
+                toast("Shizuku 未运行，请先启动 Shizuku");
+                return;
+            }
+            // 未授权时 checkSelfPermission() 会抛异常
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
+                toast("已授权");
+                render();
+                return;
+            }
+            Shizuku.requestPermission(REQ_SHIZUKU);
+        } catch (Throwable t) {
+            toast("请求失败：" + t);
+        }
+    }
+
+    /** 第 2 行：跳转「使用情况访问」设置。 */
+    @Override
+    public void onUsageAccess() {
+        try {
+            startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
+            toast("请找到「X模式助手」并允许使用情况访问");
+        } catch (Throwable t) {
+            toast("打开设置失败：" + t);
+        }
+    }
+
+    /** 第 3 行：打开游戏助手隐藏开发者选项页（让用户手动开「自动化测试」）。 */
+    @Override
+    public void onAutoTest() {
+        // openDevOptions() 是阻塞调用（内部走 Shizuku shell），必须放子线程
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean ok = MonitorService.openDevOptions();
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        toast(ok ? "已打开隐藏页，请把第一项「自动化测试」打开"
+                                : "打开失败：" + MonitorService.LAST_ERROR);
+                        render();
+                    }
+                });
+            }
+        }, "open-dev-options").start();
+    }
+
+    /** 第 4 行：请求忽略电池优化。 */
+    @Override
+    public void onBattery() {
+        try {
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Throwable t) {
+            try {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+            } catch (Throwable t2) {
+                toast("无法打开电池优化设置");
+            }
+        }
+    }
+
+    /** 主按钮：按当前运行状态启动或停止常驻监控。 */
+    @Override
+    public void onToggleMonitor() {
+        try {
+            if (MonitorService.RUNNING) {
+                stopService(new Intent(this, MonitorService.class));
+                toast("已停止");
             } else {
-                sb.append("未运行");
+                Intent intent = new Intent(this, MonitorService.class);
+                if (Build.VERSION.SDK_INT >= 26) {
+                    startForegroundService(intent);
+                } else {
+                    startService(intent);
+                }
+                toast("已启动");
             }
         } catch (Throwable t) {
-            sb.append("异常:").append(t.getMessage());
+            toast("操作失败：" + t);
         }
-        sb.append("\n使用情况访问: ").append(hasUsageAccess() ? "已授权" : "未授权");
-        sb.append("\n电池优化: ").append(isIgnoringBattery() ? "已忽略" : "未忽略");
-        sb.append("\n监控服务: ").append(MonitorService.RUNNING ? "运行中" : "未运行");
-        if (MonitorService.RUNNING) {
-            sb.append("\n阶段: ").append(MonitorService.PHASE);
-            sb.append("\n助手当前模式: ").append(MonitorService.LAST_APPLIED)
-              .append("   补投 ").append(MonitorService.FIRE_COUNT)
-              .append(" 次 / 跳过 ").append(MonitorService.SKIP_COUNT).append(" 次");
+        render();
+    }
+
+    /** 「手动投递一次 X 模式」：fire() 阻塞，放子线程。 */
+    @Override
+    public void onFireOnce() {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean ok = MonitorService.fire();
+                main.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        toast(ok ? "已投递 mode=3（游戏在前台才生效）"
+                                : "投递失败：" + MonitorService.LAST_ERROR);
+                        render();
+                    }
+                });
+            }
+        }, "fire-once").start();
+    }
+
+    // ================================================================
+    // v1.3 新增回调：白名单 / 诊断日志
+    // ================================================================
+
+    @Override
+    public void onWhitelistAdd(String pkg) {
+        MonitorService.whitelistAdd(this, pkg);
+        toast("已加入白名单：" + pkg);
+        render();
+    }
+
+    @Override
+    public void onWhitelistRemove(String pkg) {
+        MonitorService.whitelistRemove(this, pkg);
+        toast("已移出白名单：" + pkg);
+        render();
+    }
+
+    @Override
+    public void onLogClear() {
+        MonitorService.clearLog();
+        render();
+    }
+
+    /** 关于页「源码仓库」：交给系统浏览器打开。 */
+    @Override
+    public void onOpenRepo() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(XModeUi.REPO_URL));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+        } catch (Throwable t) {
+            toast("没有可用的浏览器：" + t);
         }
-        status.setText(sb.toString());
+    }
+
+    // ================================================================
+    // 状态快照
+    // ================================================================
+
+    private void render() {
+        if (ui != null) {
+            ui.render(snapshot());
+        }
+    }
+
+    /** 把系统权限状态 + 服务状态转成 UI 需要的数据结构。 */
+    private XModeUi.State snapshot() {
+        XModeUi.State s = new XModeUi.State();
+
+        boolean running = false;
+        try {
+            running = Shizuku.pingBinder();
+            if (running) {
+                s.shizukuGranted =
+                        Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+            }
+        } catch (Throwable ignored) {
+            // 未授权 / binder 已死，按未就绪处理
+        }
+        s.shizukuRunning = running;
+
+        s.usageAccess = hasUsageAccess();
+        s.batteryIgnored = isIgnoringBattery();
+
+        s.monitoring = MonitorService.RUNNING;
+        String phase = MonitorService.PHASE;
+        s.phase = phase == null ? "" : phase;
+        s.mode = MonitorService.LAST_APPLIED;
+        s.fireCount = MonitorService.FIRE_COUNT;
+        s.skipCount = MonitorService.SKIP_COUNT;
+
+        // v1.3：版本 / 白名单 / 诊断日志 / 实时温度频率
+        try {
+            s.versionName = getPackageManager()
+                    .getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Throwable ignored) {
+        }
+        s.whitelist = MonitorService.WHITELIST;
+        s.knownGames = MonitorService.KNOWN_GAMES;
+        s.logs = MonitorService.LOGS;
+        s.batteryTenths = MonitorService.BATTERY_TENTHS;
+        s.cpuCurKhz = MonitorService.CPU_CUR_KHZ;
+        s.cpuMaxKhz = MonitorService.CPU_MAX_KHZ;
+        s.hotZoneTenths = MonitorService.HOT_ZONE_TENTHS;
+        return s;
     }
 
     private boolean hasUsageAccess() {
         try {
             AppOpsManager aom = (AppOpsManager) getSystemService(Context.APP_OPS_SERVICE);
-            int mode = aom.checkOpNoThrow("android:get_usage_stats", Process.myUid(), getPackageName());
+            int mode = aom.checkOpNoThrow("android:get_usage_stats",
+                    Process.myUid(), getPackageName());
             return mode == AppOpsManager.MODE_ALLOWED;
         } catch (Throwable t) {
             return false;
@@ -180,97 +332,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void reqShizuku() {
-        try {
-            if (!Shizuku.pingBinder()) {
-                toast("Shizuku 未运行，请先启动 Shizuku");
-                return;
-            }
-            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                toast("已授权");
-                refresh();
-                return;
-            }
-            Shizuku.requestPermission(REQ_SHIZUKU);
-        } catch (Throwable t) {
-            toast("请求失败: " + t);
-        }
-    }
-
-    private void openUsageAccess() {
-        try {
-            startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
-            toast("请找到「X模式助手」并允许使用情况访问");
-        } catch (Throwable t) {
-            toast("打开设置失败: " + t);
-        }
-    }
-
-    private void openDevOptions() {
-        new Thread(new Runnable() {
-            @Override public void run() {
-                final boolean ok = MonitorService.openDevOptions();
-                ui.post(new Runnable() {
-                    @Override public void run() {
-                        toast(ok ? "已打开隐藏页，把第一项「自动化测试」打开"
-                                 : "失败：请先授权 Shizuku");
-                    }
-                });
-            }
-        }).start();
-    }
-
-    private void startMonitor() {
-        Intent i = new Intent(this, MonitorService.class);
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(i); else startService(i);
-        toast("已启动");
-    }
-
-    private void stopMonitor() {
-        stopService(new Intent(this, MonitorService.class));
-        toast("已停止");
-    }
-
-    private void fireOnce() {
-        new Thread(new Runnable() {
-            @Override public void run() {
-                final boolean ok = MonitorService.fire();
-                ui.post(new Runnable() {
-                    @Override public void run() {
-                        toast(ok ? "已投递 mode=3（游戏在前台才生效）" : "失败：请检查 Shizuku 授权");
-                    }
-                });
-            }
-        }).start();
-    }
-
-    private void requestIgnoreBattery() {
-        try {
-            Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-            i.setData(Uri.parse("package:" + getPackageName()));
-            startActivity(i);
-        } catch (Throwable t) {
-            try {
-                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-            } catch (Throwable t2) {
-                toast("无法打开电池优化设置");
-            }
-        }
-    }
-
-    private Button btn(String text, View.OnClickListener l) {
-        Button b = new Button(this);
-        b.setText(text);
-        b.setAllCaps(false);
-        b.setOnClickListener(l);
-        return b;
-    }
-
-    private int dp(int v) {
-        return (int) (v * getResources().getDisplayMetrics().density);
-    }
-
-    private void toast(String s) {
-        Toast.makeText(this, s, Toast.LENGTH_SHORT).show();
+    private void toast(String message) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 }

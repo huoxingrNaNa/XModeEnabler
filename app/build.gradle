@@ -1,5 +1,16 @@
 plugins { id 'com.android.application' }
 
+// ────────────────────────────────────────────────────────────────
+// 正式签名：凭据放在项目根目录的 keystore.properties（不进版本库）
+// 文件缺失时自动降级为「无签名」，不影响 debug 构建，也不会编译失败。
+// ────────────────────────────────────────────────────────────────
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { stream -> keystoreProps.load(stream) }
+}
+def hasReleaseKey = keystorePropsFile.exists() && keystoreProps['storeFile'] != null
+
 android {
     namespace 'com.operit.xmode'
     compileSdk 34
@@ -8,8 +19,19 @@ android {
         applicationId "com.operit.xmode"
         minSdk 26
         targetSdk 34
-        versionCode 2
-        versionName "1.1"
+        versionCode 6
+        versionName "1.5"
+    }
+
+    signingConfigs {
+        release {
+            if (hasReleaseKey) {
+                storeFile file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
     }
 
     buildTypes {
@@ -18,6 +40,9 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasReleaseKey) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 

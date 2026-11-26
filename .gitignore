@@ -23,3 +23,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Signing（密钥与凭据绝不入库）
+*.jks
+*.keystore
+keystore.properties
+KEYSTORE*.txt

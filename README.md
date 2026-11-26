@@ -79,11 +79,11 @@ am start -n com.oplus.games/business.compact.activity.GameDevelopOptionsActivity
 1. 点 **① 授权 Shizuku** → 允许
 2. 点 **② 授权「使用情况访问」** → 在系统列表里允许
 3. 点 **③** 打开游戏助手的隐藏页，把第一项「自动化测试」打开（其余开关别动）
-4. 点 **④ 启动常驻监控**（可选：点「忽略电池优化」防止被系统清理）
+4. 允许**通知权限**，点 **④ 启动常驻监控**（首屏第 4 行可先点「忽略电池优化」防止被系统清理）
 5. 之后正常玩支持的任意游戏即可，通知栏会显示实时状态：
 
 ```
-X模式生效中(跳过)  |  模式=3  |  补投1次/跳过15次
+X模式生效中(跳过)  |  33.4℃  |  模式=3  |  补投1次/跳过15次
 ```
 
 - `模式=3` → X 模式正在生效
@@ -91,15 +91,14 @@ X模式生效中(跳过)  |  模式=3  |  补投1次/跳过15次
 
 ---
 
-## v1.1 优化摘要
+## 版本演进
+- **v1.1**：事件驱动重写（前台包名管道探测、自适应心跳 5s/15s、单线程调度、通知去重）；新增「打开自动化测试」与「忽略电池优化」入口；release 开 R8
+- **v1.2**：修复 **Shizuku `exec()` 致命兼容 bug**（`ShizukuRemoteProcess` 未退出时抛 `IllegalArgumentException` 而非 `IllegalThreadStateException`，导致所有 shell 操作被误判失败，X 模式投递同样会失效）；启用正式签名（`keystore.properties` + `signingConfigs.release`，文件缺失自动降级）
+- **v1.3**：实时状态采样（电池温度 / CPU 最高簇频率 / 最热热区，一次 shell 往返取齐）、游戏白名单、诊断日志（最多 60 条，UI 显示最近 12 条）、通知栏快捷按钮（立即投递 / 停止）与点击通知回到 App
+- **v1.4**：界面重构为底部标签页（首页 / 关于），关于页独立
+- **v1.5**：许可证页（本应用 MIT 全文 + Shizuku Apache-2.0 + AndroidX Apache-2.0，已核验）、「打开源码仓库」入口
 
-- 修掉 `stopService()` → `startService()` 竞态可能导致的 FGS 超时崩溃
-- 前台包名探测改为设备侧管道（`dumpsys | grep | head`），每次只回传一行，替换掉原来每 5 秒拉回几百 KB 全量 dumpsys 的做法
-- 自适应心跳（游戏中 5s / 待机 15s）、单线程调度器、通知按需刷新、UI 仅前台刷新
-- 新增「打开游戏助手自动化测试」与「忽略电池优化」入口；状态区实时显示阶段/模式/补投统计
-- release 开启 R8 + 资源收缩（仓库 Release 内的设备侧构建包 ≈ 42 KB；CI 自动构建产物 ≈ 31 KB）；新增自适应图标与 GitHub Actions CI
-
-详见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
+v1.1 的性能优化细节见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
 
 ## 构建
 
@@ -133,6 +132,18 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 > ```
 > 普通 PC 构建**不需要**这行。
 
+### 正式签名（可选）
+仓库不包含任何密钥。要出可长期升级的正式包，自己生成一个密钥后放到项目根目录：
+```bash
+keytool -genkeypair -v -keystore my-release.jks -alias mykey \
+  -keyalg RSA -keysize 2048 -validity 10950
+cp keystore.properties.example keystore.properties
+# 编辑 keystore.properties，填入 storeFile / storePassword / keyAlias / keyPassword
+./gradlew assembleRelease
+```
+`keystore.properties` 与 `*.jks` 已在 `.gitignore` 中；文件缺失时 `assembleRelease` 仍可构建，只是不签名。
+> ⚠️ 密钥丢失后无法再更新同一包名的应用，请自行备份。
+
 ---
 
 ## 项目结构
@@ -142,18 +153,23 @@ XModeEnabler/
 ├── .github/
 │   └── workflows/android.yml          # CI：push 后自动构建 debug + release
 ├── app/
-│   ├── build.gradle
-│   ├── proguard-rules.pro             # R8 混淆保留规则
+│   ├── build.gradle                   # 含 signingConfigs.release（凭据外置）
+│   ├── proguard-rules.pro             # R8 保留规则（Shizuku 反射入口等）
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       ├── java/com/operit/xmode/
-│       │   ├── MainActivity.java      # 界面 + 授权 + 启动/停止
-│       │   └── MonitorService.java    # 事件驱动核心（前台服务）
+│       │   ├── MainActivity.java      # 功能接线：回调 + 状态快照
+│       │   ├── MonitorService.java    # 事件驱动核心（前台服务 + shell 采样）
+│       │   ├── NotifyActionReceiver.java  # 通知栏快捷按钮
+│       │   ├── XModeUi.java           # 界面层（标签页 / 卡片 / 渲染）
+│       │   ├── PulseView.java         # 主状态脉冲动画
+│       │   └── XIcon.java             # Canvas 线框图标集
 │       └── res/                       # 自适应图标 + 配色
 ├── docs/
 │   ├── REVERSE_NOTES.md               # 逆向分析与实测记录
 │   └── OPTIMIZATIONS.md               # v1.1 优化记录
-├── gradle/wrapper/                    # Gradle Wrapper
+├── gradle/wrapper/
+├── keystore.properties.example        # 签名凭据模板（真实文件不入库）
 ├── build.gradle
 ├── settings.gradle
 └── gradle.properties
