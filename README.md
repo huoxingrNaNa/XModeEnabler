@@ -7,7 +7,7 @@
 - 设备验证：**OnePlus PLQ110**，ColorOS / Android 16（SDK 36），arm64-v8a
 - 目标应用：`com.oplus.games`（游戏助手 v10.24.20）
 - **无需 Root**：全程通过 **Shizuku** 以 `shell` 身份投递官方指令
-- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.1**
+- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.7**
 
 ---
 
@@ -204,9 +204,29 @@ XModeEnabler/
 - **v1.5**：许可证页（本应用 MIT 全文 + Shizuku Apache-2.0 + AndroidX Apache-2.0，已核验）、「打开源码仓库」入口
 - **v1.6**：返回键分级（许可证页 → 关于页 → 首页 → 退出）、诊断日志「记录开/关」开关、日志导出（系统「另存为」，无需存储权限）、手动投递防连点
 - **v1.6.1**：修复日志导出可能写出空文件（不再用 Activity 字段中转，返回时重新生成文本），事件改为**落盘保存**（应用重启或服务未运行时导出也有内容），导出提示带上字符数
+- **v1.6.2**：全量自检 14 项修复（日志监听粘死旧 pid、Shizuku 掉线无提示、投递失败提示空白、会话判据、无用权限清理、热区取错传感器、适配版本写死等）；分身 / 副用户前台包名解析；通知渠道重建
+- **v1.6.3**：会话判据补上 `setInGameMode isInGame = true` 与 `COSASDKManager isInGame=` 心跳（`INGAME_STALE_MS = 120s`），白名单非空时界面红字警示
+- **v1.6.4**：投递成功不再乐观置位，只有助手日志 `toAppliedMode = 3` 才算生效；未确认按 5 秒重投（上限 8 次）
+- **v1.6.5**：`logcat` 加 `-T 1`（修启动时把历史缓冲当新事件）；重试节奏改 8 / 15 / 30 秒三档
+- **v1.6.6**：通知栏改为**状态指示器**（标题随真实状态变化）
+- **v1.6.7**：宿主包名视为「自身」；通知正文显示应用中文名
 
 v1.1 的性能优化细节见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
+静态项目主页见 [`docs/index.html`](docs/index.html)（可直接用 GitHub Pages 托管）。
+---
+## 关于「游戏助手里不显示 X 模式」
+这一点必须先说清楚，避免误判：
 
+| 事实 | 依据 |
+|---|---|
+| **官方 X 模式的入口绑定在原装散热背夹上** | 助手资源文案：「连接欧加散热背夹后会自动开启 X 模式……开启方式：开启蓝牙并连接散热背夹」 |
+| 一加/OPPO 的判定方式是**设备类（COD）白名单** | `CoolingBackClipOplusFeature.isCoolType(cod, type)`：`cod ∈ {0x0A04, 0x0A08 … 0x0A94}`（37 个值）且 `type == 2`(LE) |
+| 第三方蓝牙名白名单只服务 **realme 燃模式** | 名单在 `assets/sys_cooling_back_clip_whitelist_assets.xml`，匹配逻辑在 `CoolingBackClipRealmeFeature`，一加不会调用 |
+| 本应用做的是**绕过界面直接投递 `mode=3`** | 助手侧日志可见 `chengPerfMode 3`、`toAppliedMode = 3`、`showFrameViewVisible switchMode: xMode` |
+
+**结论**：不接原装背夹时，面板里**不会**出现 X 档，这是正常现象，不是本应用失效。判断是否真的生效，请看**通知栏标题**（`X模式生效中`）或 App 内诊断日志里的助手模式值。
+
+社区里能做到「界面也显示 X」的方案均需 **root + LSPosed 模块**（如 LuckyTool hook `CoolingBackClipFeature` 与 `oplus.software.general.cooling.back.clip.enable`），本应用不采用该路线。
 ---
 
 ## 排错 FAQ

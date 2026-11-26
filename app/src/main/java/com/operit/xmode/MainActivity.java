@@ -1,7 +1,6 @@
 package com.operit.xmode;
 
 import android.app.Activity;
-import android.app.AppOpsManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -11,7 +10,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
-import android.os.Process;
 import android.provider.Settings;
 import android.widget.Toast;
 
@@ -41,6 +39,8 @@ public class MainActivity extends Activity implements XModeUi.Listener {
     private static final int REQ_NOTIFICATION = 1002;
     /** 导出诊断日志的系统「另存为」请求码。 */
     private static final int REQ_EXPORT = 1003;
+    /** 界面重建（旋转屏幕等）时保存的当前页面编号。 */
+    private static final String KEY_PAGE = "xmode_page";
 
     /** 「手动投递」进行中标记，防止连点并发投递。 */
     private volatile boolean fireBusy = false;
@@ -82,6 +82,9 @@ public class MainActivity extends Activity implements XModeUi.Listener {
 
         ui = new XModeUi(this, this);
         setContentView(ui.root());
+        if (savedInstanceState != null) {
+            ui.setPage(savedInstanceState.getInt(KEY_PAGE, 0));
+        }
         MonitorService.initPrefs(this);
         render();
 
@@ -90,13 +93,21 @@ public class MainActivity extends Activity implements XModeUi.Listener {
         } catch (Throwable ignored) {
         }
 
-        if (Build.VERSION.SDK_INT >= 33) {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                != PackageManager.PERMISSION_GRANTED) {
             try {
                 requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},
                         REQ_NOTIFICATION);
             } catch (Throwable ignored) {
             }
         }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (ui != null) outState.putInt(KEY_PAGE, ui.page());
     }
 
     @Override
@@ -143,17 +154,6 @@ public class MainActivity extends Activity implements XModeUi.Listener {
             Shizuku.requestPermission(REQ_SHIZUKU);
         } catch (Throwable t) {
             toast("请求失败：" + t);
-        }
-    }
-
-    /** 第 2 行：跳转「使用情况访问」设置。 */
-    @Override
-    public void onUsageAccess() {
-        try {
-            startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS));
-            toast("请找到「X模式助手」并允许使用情况访问");
-        } catch (Throwable t) {
-            toast("打开设置失败：" + t);
         }
     }
 
@@ -355,10 +355,10 @@ public class MainActivity extends Activity implements XModeUi.Listener {
         }
         s.shizukuRunning = running;
 
-        s.usageAccess = hasUsageAccess();
         s.batteryIgnored = isIgnoringBattery();
 
         s.monitoring = MonitorService.RUNNING;
+        s.inSession = MonitorService.IN_SESSION;
         String phase = MonitorService.PHASE;
         s.phase = phase == null ? "" : phase;
         s.mode = MonitorService.LAST_APPLIED;
@@ -379,17 +379,16 @@ public class MainActivity extends Activity implements XModeUi.Listener {
         s.cpuMaxKhz = MonitorService.CPU_MAX_KHZ;
         s.hotZoneTenths = MonitorService.HOT_ZONE_TENTHS;
         s.logEnabled = MonitorService.LOG_ENABLED;
+        s.gamesVersion = gamesVersionName();
         return s;
     }
 
-    private boolean hasUsageAccess() {
+    /** 读取游戏助手版本名（用于关于页「适配」行，v1.6.2 改为动态）。 */
+    private String gamesVersionName() {
         try {
-            AppOpsManager aom = (AppOpsManager) getSystemService(Context.APP_OPS_SERVICE);
-            int mode = aom.checkOpNoThrow("android:get_usage_stats",
-                    Process.myUid(), getPackageName());
-            return mode == AppOpsManager.MODE_ALLOWED;
+            return getPackageManager().getPackageInfo("com.oplus.games", 0).versionName;
         } catch (Throwable t) {
-            return false;
+            return "";
         }
     }
 

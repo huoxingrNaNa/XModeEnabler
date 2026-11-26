@@ -1,4 +1,4 @@
-# HANDOFF · XModeEnabler v1.6.1
+# HANDOFF · XModeEnabler v1.6.7
 
 交接说明：便于下一位维护者 / 验证者快速接手。原理、逆向细节与用法见
 [`README.md`](README.md) 与 [`docs/REVERSE_NOTES.md`](docs/REVERSE_NOTES.md)。
@@ -11,9 +11,9 @@
 | 项 | 值 |
 |---|---|
 | 仓库 | https://github.com/huoxingrNaNa/XModeEnabler （Public / `main`） |
-| 当前版本 | `v1.6.1`（`versionCode 8` / `versionName 1.6.1`） |
+| 当前版本 | `v1.6.7`（`versionCode 14` / `versionName 1.6.7`） |
 | 关键提交 | `cfbc81f`（v1.2 ~ v1.5 全部改动）、`ff34d8a`（v1.1 文档收尾） |
-| tag / Release | `v1.6.1`，Release 附加 `XModeEnabler-v1.6.1-release.apk` + `.sha256`（`v1.6` 保留） |
+| tag / Release | `v1.6.7`，Release 附加 `XModeEnabler-v1.6.7-release.apk`（`v1.6.1` / `v1.6` 保留） |
 | 旧版本 | `v1.1`（debug 签名）、`v1.5` Release 保留 |
 
 ## 2. 构建
@@ -81,19 +81,19 @@ CI 无签名密钥，产出的 release 包为未签名。
 - 单次投递可维持约 44 秒，因此只监听助手日志，在模式被改回时补投，另有 90 秒安全网。
 - 白名单与已识别游戏存 `SharedPreferences`（`xmode_prefs`）；诊断事件存 `files/events.log`。
 
-## 8. APK 核验事实（v1.6.1 产物）
+## 8. APK 核验事实（v1.6.7 产物）
 
 | 项 | 值 |
 |---|---|
 | package | `com.operit.xmode` |
-| version | `versionCode 8` / `versionName 1.6.1` |
+| version | `versionCode 14` / `versionName 1.6.7` |
 | sdk | minSdk 26 / targetSdk 34 |
 | 应用名 | X模式助手 |
 | 签名 | v2（APK Signature Scheme v2）= true；RSA 2048 |
 | 证书 DN | `CN=XModeEnabler, OU=Personal, O=Personal, L=Unknown, ST=Unknown, C=CN` |
 | 证书 SHA-256 | `c2f87c95ba6c289f406b1922803e15c1a6ace75e73b78794ebb7eab7c46ba625` |
-| APK SHA-256 | `5bf692349fafa923d025ab166d68a7cd3c65d6b2cbe9a35c37a0ab74580aef0c` |
-| 体积 | release 54800 B（R8 + 资源收缩后） |
+| APK SHA-256 | `b7626270d9c09fe0785dca6c5382066bbee157dd4f0b4881b7ca8bb122963d85` |
+| 体积 | release 56564 B（R8 + 资源收缩后） |
 
 ## 9. 真机验证记录
 

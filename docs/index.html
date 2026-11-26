@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>XModeEnabler · X模式助手</title>
+<meta name="description" content="无需 Root，通过 Shizuku 让第三方散热器也能用上 ColorOS 官方 X 模式性能策略。">
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#131824; --panel2:#0f1420;
+    --line:#222a3a; --text:#e8edf7; --dim:#94a0b8; --dim2:#6b778e;
+    --accent:#ff6a1a; --accent2:#ffb066; --ok:#35d1a4; --warn:#ffcc4d; --bad:#ff5c7a;
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:
+      radial-gradient(1100px 520px at 12% -12%,#1d2637 0%,transparent 60%),
+      radial-gradient(900px 480px at 92% 0%,#25161a 0%,transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;
+       background:#1b2231;border:1px solid var(--line);border-radius:6px;padding:1px 6px;color:#cfe0ff}
+  /* hero */
+  header{padding:72px 0 40px;text-align:center}
+  .logo{width:64px;height:64px;margin:0 auto 18px;border-radius:18px;
+        background:linear-gradient(140deg,var(--accent),#b8340a);
+        display:grid;place-items:center;font-weight:800;font-size:30px;color:#fff;
+        box-shadow:0 14px 40px rgba(255,106,26,.32)}
+  h1{margin:0;font-size:clamp(28px,5vw,42px);letter-spacing:-.5px}
+  h1 small{display:block;font-size:.42em;font-weight:500;color:var(--dim);letter-spacing:0;margin-top:10px}
+  .badges{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:22px 0 0}
+  .badge{font-size:13px;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:#10151f}
+  .badge b{color:var(--ok);font-weight:600}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:28px 0 0}
+  .btn{display:inline-block;padding:11px 22px;border-radius:12px;font-weight:600;font-size:15px;border:1px solid var(--line);color:var(--text);background:#141a26;transition:.18s}
+  .btn:hover{text-decoration:none;transform:translateY(-1px);border-color:#33405a}
+  .btn.primary{background:linear-gradient(140deg,var(--accent),#d34a08);border-color:transparent;color:#fff;box-shadow:0 10px 28px rgba(255,106,26,.28)}
+  /* notice */
+  .notice{margin:44px 0 0;padding:18px 20px;border-radius:var(--radius);
+          background:linear-gradient(180deg,rgba(255,204,77,.10),rgba(255,204,77,.04));
+          border:1px solid rgba(255,204,77,.30)}
+  .notice b{color:var(--warn)}
+  /* section */
+  section{margin:56px 0 0}
+  h2{font-size:clamp(20px,3vw,26px);margin:0 0 6px;letter-spacing:-.3px}
+  .sub{color:var(--dim2);font-size:14px;margin:0 0 22px}
+  /* cards */
+  .grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
+        border-radius:var(--radius);padding:20px}
+  .card h3{margin:0 0 8px;font-size:16px}
+  .card p{margin:0;color:var(--dim);font-size:14.5px}
+  .ico{font-size:20px;margin-bottom:10px}
+  /* table */
+  .tbl{width:100%;border-collapse:collapse;font-size:14.5px;overflow:hidden;border-radius:var(--radius)}
+  .tbl th,.tbl td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  .tbl th{background:#151b28;color:var(--dim);font-weight:600;font-size:13px;letter-spacing:.4px}
+  .tbl tr:last-child td{border-bottom:none}
+  .tbl td:first-child{white-space:nowrap;color:var(--text)}
+  .tblwrap{border:1px solid var(--line);border-radius:var(--radius);overflow:auto;background:var(--panel2)}
+  .ok{color:var(--ok)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+  /* steps */
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  ol.steps li{counter-increment:s;position:relative;padding:14px 0 14px 52px;border-bottom:1px dashed var(--line)}
+  ol.steps li:last-child{border-bottom:none}
+  ol.steps li::before{content:counter(s);position:absolute;left:0;top:12px;width:32px;height:32px;border-radius:10px;
+      background:#1b2231;border:1px solid var(--line);display:grid;place-items:center;font-weight:700;color:var(--accent2);font-size:14px}
+  ol.steps b{display:block;margin-bottom:2px}
+  ol.steps span{color:var(--dim);font-size:14.5px}
+  footer{margin:72px 0 0;padding:28px 0 46px;border-top:1px solid var(--line);color:var(--dim2);font-size:13.5px;text-align:center}
+  .kbd{font-size:12.5px;color:var(--dim2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="logo">X</div>
+  <h1>XModeEnabler · X模式助手
+    <small>无需 Root，通过 Shizuku 让第三方散热器也用上官方 X 模式策略</small>
+  </h1>
+  <div class="badges">
+    <span class="badge"><b>无需 Root</b> · Shizuku shell</span>
+    <span class="badge">ColorOS / Android 16</span>
+    <span class="badge">v1.6.7</span>
+    <span class="badge">MIT License</span>
+  </div>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/huoxingrNaNa/XModeEnabler">源码仓库</a>
+    <a class="btn" href="https://github.com/huoxingrNaNa/XModeEnabler/blob/main/CHANGELOG.md">更新日志</a>
+    <a class="btn" href="https://github.com/huoxingrNaNa/XModeEnabler/blob/main/README.md">完整文档</a>
+  </div>
+</header>
+
+<div class="notice">
+  <b>⚠️ 使用前必读：请搭配散热背夹使用。</b>
+  本应用只负责让 X 模式策略被触发，<b>它本身不提供任何制冷能力</b>。不接外置散热就长时间开 X 模式，
+  结果通常是烫手机 + 高温降频，帧率反而不如均衡模式。
+</div>
+
+<section>
+  <h2>它解决什么问题</h2>
+  <p class="sub">ColorOS 把 X 模式锁在「原装散热背夹」的私有信号上，第三方散热器再强也触发不了。</p>
+  <div class="grid">
+    <div class="card">
+      <div class="ico">🛡️</div>
+      <h3>不修改游戏助手</h3>
+      <p>不修改 APK、不 Hook、不注入。借用助手自带的「自动化测试」调试通道，以 Shizuku 的 shell 身份投递官方指令。</p>
+    </div>
+    <div class="card">
+      <div class="ico">⚡</div>
+      <h3>事件驱动维持</h3>
+      <p>监听游戏助手自身日志判断会话，模式被回滚才补投，未确认生效就按 8 / 15 / 30 秒三档重试。</p>
+    </div>
+    <div class="card">
+      <div class="ico">📊</div>
+      <h3>状态看得见</h3>
+      <p>通知栏标题随真实状态变化，正文显示前台应用、机身温度、助手模式与补投次数，不用再猜有没有生效。</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>通知栏就是指示器</h2>
+  <p class="sub">之前「到底有没有生效」只能靠感觉，现在看标题即可。</p>
+  <div class="tblwrap">
+    <table class="tbl">
+      <thead><tr><th>通知标题</th><th>含义</th><th>正文示例</th></tr></thead>
+      <tbody>
+        <tr><td class="ok">X模式生效中</td><td>助手已确认 <code>mode=3</code>，策略正在生效</td><td>前台 三角洲行动 · 机身 36.2℃ · 助手模式 3</td></tr>
+        <tr><td class="warn">已投递，等待助手生效…</td><td>指令已发出，助手尚未确认</td><td>前台 三角洲行动 · 机身 38.1℃ · 助手模式 2</td></tr>
+        <tr><td>X模式助手 · 监控中(待机)</td><td>服务在跑，当前没有游戏会话</td><td>前台 微信 · 机身 33.4℃ · 助手模式 0</td></tr>
+        <tr><td class="bad">投递失败 · 检查 Shizuku</td><td>Shell 身份不可用，需要重启 Shizuku</td><td>补投 3 次 · 跳过 0 次</td></tr>
+        <tr><td class="bad">不在白名单 · 已跳过</td><td>该游戏不在你设置的白名单内</td><td>前台 微信（白名单外）</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>关于「游戏助手里不显示 X 模式」</h2>
+  <p class="sub">这是官方设计，不是本应用失效，先说清楚免得误判。</p>
+  <div class="tblwrap">
+    <table class="tbl">
+      <thead><tr><th>事实</th><th>依据</th></tr></thead>
+      <tbody>
+        <tr><td>X 模式入口绑原装背夹</td><td>助手资源文案：「连接欧加散热背夹后会自动开启 X 模式……开启方式：开启蓝牙并连接散热背夹」</td></tr>
+        <tr><td>一加 / OPPO 按 <b>设备类（COD）</b> 判定</td><td><code>CoolingBackClipOplusFeature.isCoolType(cod, type)</code>：<code>cod ∈ 0x0A04 … 0x0A94</code>（37 个值）且 <code>type == 2</code>（LE）</td></tr>
+        <tr><td>第三方蓝牙名白名单只服务 realme</td><td>名单在 <code>assets/sys_cooling_back_clip_whitelist_assets.xml</code>，匹配逻辑在 <code>CoolingBackClipRealmeFeature</code>，一加不会调用</td></tr>
+        <tr><td>本应用绕过界面直接投递 <code>mode=3</code></td><td>助手侧日志可见 <code>chengPerfMode 3</code>、<code>toAppliedMode = 3</code>、<code>showFrameViewVisible switchMode: xMode</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="kbd" style="margin-top:14px">
+    社区里能让界面也显示 X 的方案均需 <b>root + LSPosed</b>（如 LuckyTool hook <code>CoolingBackClipFeature</code> 与
+    <code>oplus.software.general.cooling.back.clip.enable</code>），本项目不采用该路线。
+  </p>
+</section>
+
+<section>
+  <h2>快速开始</h2>
+  <p class="sub">一次性配置，之后开机点一下即可。</p>
+  <ol class="steps">
+    <li><b>安装并启动 Shizuku</b><span>无线调试方式激活，本应用申请授权时允许。</span></li>
+    <li><b>安装本应用，打开「启动常驻监控」</b><span>前台服务会常驻，通知栏出现状态标题。</span></li>
+    <li><b>把要维持的游戏加入白名单</b><span>留空则对全部游戏生效；建议只放需要的，避免误判。</span></li>
+    <li><b>进游戏，等 5～10 秒</b><span>通知标题变成「X模式生效中」即为成功。</span></li>
+    <li><b>配好散热</b><span>机身温度持续 ≥45℃ 说明散热不足，建议退回均衡模式。</span></li>
+  </ol>
+</section>
+
+<section>
+  <h2>验证过的设备</h2>
+  <div class="grid">
+    <div class="card"><h3>OnePlus PLQ110</h3><p>ColorOS / Android 16（SDK 36），arm64-v8a</p></div>
+    <div class="card"><h3>游戏助手 v10.24.20</h3><p><code>com.oplus.games</code>，原包未改动</p></div>
+    <div class="card"><h3>Shizuku shell（uid 2000）</h3><p>无 Root；签名级权限组件均未使用</p></div>
+  </div>
+</section>
+
+<footer>
+  <div>XModeEnabler · MIT License · 仅供学习与个人设备使用</div>
+  <div style="margin-top:6px">修改系统游戏调度存在风险，请自行评估；因使用本工具造成的设备问题由使用者承担。</div>
+</footer>
+
+</div>
+</body>
+</html>

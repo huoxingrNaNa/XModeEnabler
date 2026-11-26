@@ -59,6 +59,8 @@ public class MonitorService extends Service {
     public static volatile int SKIP_COUNT = 0;
     /** 最近一次操作失败的具体原因（供 UI 显示 / 排查用）。 */
     public static volatile String LAST_ERROR = "";
+    /** 是否处于游戏会话中（v1.6.2：UI 判定「生效中」不能只看模式号）。 */
+    public static volatile boolean IN_SESSION = false;
 
     // ── v1.3 新增：白名单 / 已识别游戏 / 诊断日志 / 实时温度频率 ──
 
@@ -92,13 +94,23 @@ public class MonitorService extends Service {
     private static java.io.File logFile;
     private static boolean logLoaded = false;
 
-    private static final String CH_ID = "xmode_channel";
+    private static final String CH_ID = "xmode_channel2";
+    /** v1.6.2：旧渠道重要性为 LOW，系统判为「不重要」会折叠，按钮不易看到，已废弃。 */
+    private static final String CH_ID_OLD = "xmode_channel";
     private static final int NOTI_ID = 1001;
 
     private static final long TICK_ACTIVE_MS = 5000L;
-    private static final long TICK_IDLE_MS = 15000L;
+    private static final long TICK_IDLE_MS = 10000L;
     private static final long SESSION_WINDOW_MS = 150000L;
-    private static final long SAFETY_MS = 90000L;
+    /** 助手心跳过期时间：COSA 心跳 15~45 秒一次，这里留足两三个周期（v1.6.3）。 */
+    private static final long INGAME_STALE_MS = 120000L;
+    /** 未确认生效时的重试间隔（v1.6.5）：前 2 次 8 秒，之后 15 秒，失败多了退到 30 秒。 */
+    private static final long RETRY_FAST_MS = 8000L;
+    private static final long RETRY_MID_MS = 15000L;
+    private static final long RETRY_SLOW_MS = 30000L;
+    private static final int RETRY_FAST_TIMES = 2;
+    private static final int RETRY_MID_TIMES = 10;
+    private static final long SAFETY_MS = 60000L;
 
     private static final String TARGET = "com.oplus.games/business.service.SpecialFeatureService";
     private static final String ACTION = "PERFORMANCE_CHANGE_ACTION";
@@ -109,13 +121,39 @@ public class MonitorService extends Service {
 
     private static final Pattern P_APPLIED = Pattern.compile("toAppliedMode = (-?[0-9]+)");
 
+    /**
+     * 机身温度采样（v1.6.2）：只取外壳 / 皮肤 / 电池类热区，排除 cpu-*、gpuss-*、bcl 等
+     * 内部传感器 —— 那些值跳动大且明显高于体感（实测可在 51~64℃ 之间乱跳）。
+     */
+    private static final String CMD_BODY_TEMP = "echo HZ:$(for z in /sys/class/thermal/thermal_zone*; do "
+            + "n=$(cat $z/type 2>/dev/null); "
+            + "case \"$n\" in shell_back|shell_front|shell_frame|skin*|battery|batt*) "
+            + "cat $z/temp 2>/dev/null;; esac; done | sort -n | tail -1)";
+
     private static ScheduledExecutorService pool;
 
     private volatile boolean started = false;
     private volatile long lastPerfTs = 0L;
     private volatile long lastFireTs = 0L;
-    private volatile boolean watcherStarted = false;
     private volatile Process watcherProc = null;
+    /** 当前 logcat 挂着的游戏助手 pid；-1 表示尚未挂载。 */
+    private volatile int watcherPid = -1;
+    /** watcher 代际号：递增即让旧线程失效，修「停止后快速启动丢监听」。 */
+    private volatile int watcherGen = 0;
+    /** 跳过计数 / Shizuku 告警的节流时间戳。 */
+    private volatile long lastSkipTs = 0L;
+    private volatile long lastShizukuLogTs = 0L;
+    /** 游戏助手自报的 in-game 状态 + 心跳时间（v1.6.3：会话判定的主信号）。 */
+    private volatile boolean inGameFlag = false;
+    private volatile long inGameTs = 0L;
+    /** 上一秒起连续投递次数（v1.6.4：未确认生效时的重试计数）。 */
+    private volatile int fireAttempts = 0;
+    /** 收到「助手真的应用了模式」后，下一轮 tick 把当前前台包名记成游戏。 */
+    private volatile boolean rememberPending = false;
+    /** 上一次因「不在白名单」被跳过而写日志的包名，避免重复写。 */
+    private volatile String lastSkipPkg = null;
+    /** 上一次已写进诊断日志的阶段文案（v1.6.5）。 */
+    private volatile String lastPhaseSeen = "";
     private volatile long nextDelay = TICK_ACTIVE_MS;
     private volatile String lastNoti = "";
     /** v1.3：用于区分状态跃迁，写诊断日志 */
@@ -262,10 +300,11 @@ public class MonitorService extends Service {
                 .append("补投 / 跳过: ").append(FIRE_COUNT).append(" / ").append(SKIP_COUNT).append('\n')
                 .append("电池温度: ").append(BATTERY_TENTHS > 0
                         ? String.format(Locale.US, "%.1f℃", BATTERY_TENTHS / 10f) : "—").append('\n')
-                .append("CPU 最高簇: ").append(CPU_CUR_KHZ > 0
+                .append("游戏会话: ").append(IN_SESSION ? "有" : "无").append('\n')
+                .append("CPU 最高簇: ").append(CPU_CUR_KHZ > 0 && CPU_MAX_KHZ > 0
                         ? String.format(Locale.US, "%.2f GHz / %.2f GHz",
                         CPU_CUR_KHZ / 1000000f, CPU_MAX_KHZ / 1000000f) : "—").append('\n')
-                .append("最热热区: ").append(HOT_ZONE_TENTHS > 0
+                .append("机身温度: ").append(HOT_ZONE_TENTHS > 0
                         ? String.format(Locale.US, "%.1f℃", HOT_ZONE_TENTHS / 10f) : "—").append('\n')
                 .append("白名单: ").append(WHITELIST.isEmpty() ? "(空，对所有游戏生效)" : WHITELIST.toString())
                 .append('\n')
@@ -347,7 +386,7 @@ public class MonitorService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         // 必须无条件、尽快 startForeground（Android 8+/12+ 均有 5 秒硬限制）
         try {
-            startForeground(NOTI_ID, buildNotification("已启动，等待游戏…"));
+            startForeground(NOTI_ID, buildNotification("X模式助手 · 启动中", "正在连接 Shizuku…"));
         } catch (Throwable t) {
             Log.w(TAG, "startForeground failed", t);
         }
@@ -376,6 +415,9 @@ public class MonitorService extends Service {
         RUNNING = false;
         started = false;
         PHASE = "已停止";
+        IN_SESSION = false;
+        // 让旧 watcher 线程立刻失效（v1.6.2），避免快速停止/启动时留下无监听的窗口
+        watcherGen++;
         if (pool != null) {
             pool.shutdownNow();
             pool = null;
@@ -384,6 +426,8 @@ public class MonitorService extends Service {
             if (watcherProc != null) watcherProc.destroy();
         } catch (Throwable ignored) {
         }
+        watcherProc = null;
+        watcherPid = -1;
         try {
             stopForeground(STOP_FOREGROUND_REMOVE);
         } catch (Throwable ignored) {
@@ -416,17 +460,49 @@ public class MonitorService extends Service {
     }
 
     private void tick() {
+        // Shizuku 不可用时不再假装「待机」，明确告知（v1.6.2）
+        if (!shizukuReady()) {
+            IN_SESSION = false;
+            PHASE = "Shizuku未就绪";
+            long t0 = System.currentTimeMillis();
+            if (t0 - lastShizukuLogTs > 60000L) {
+                lastShizukuLogTs = t0;
+                logEvent("Shizuku 未就绪（服务未运行或未授权）");
+            }
+            nextDelay = TICK_IDLE_MS;
+            updateNotificationIfChanged();
+            return;
+        }
+
         Sample s = sample();
         String top = s.top;
         long now = System.currentTimeMillis();
         boolean self = top == null
                 || top.equals(getPackageName())
+                // v1.6.7：Operit 宿主本身也视为「自身」，避免被当成白名单外的应用
+                || top.startsWith("com.ai.assistance.operit")
                 || top.equals("com.android.systemui")
                 || top.endsWith("launcher")
                 || top.endsWith("launcher3");
-        boolean session = (now - lastPerfTs) < SESSION_WINDOW_MS;
+        boolean session = (inGameFlag && (now - inGameTs) < INGAME_STALE_MS)
+                || (now - lastPerfTs) < SESSION_WINDOW_MS;
         boolean allowed = WHITELIST.isEmpty() || isWhitelisted(top);
-        boolean need = (LAST_APPLIED != 3) || (now - lastFireTs) > SAFETY_MS;
+        // v1.6.5：只有助手日志确认 mode=3 才算生效；未确认就按间隔重试
+        long gap = now - lastFireTs;
+        long retryGap = (fireAttempts <= RETRY_FAST_TIMES) ? RETRY_FAST_MS
+                : (fireAttempts <= RETRY_MID_TIMES ? RETRY_MID_MS : RETRY_SLOW_MS);
+        boolean need = (LAST_APPLIED == 3) ? gap > SAFETY_MS : gap > retryGap;
+
+        // 游戏助手进程变了（被杀 / 升级）→ 让 logcat 重新挂到新 pid（v1.6.2）
+        Process wp = watcherProc;
+        if (wp != null && (s.gamesPid <= 0 || s.gamesPid != watcherPid)) {
+            try {
+                wp.destroy();
+            } catch (Throwable ignored) {
+            }
+        }
+
+        IN_SESSION = session;
 
         // 实时温度 / 频率（采不到就保留上次值）
         if (s.batteryTenths > 0) BATTERY_TENTHS = s.batteryTenths;
@@ -434,41 +510,69 @@ public class MonitorService extends Service {
         if (s.cpuMaxKhz > 0) CPU_MAX_KHZ = s.cpuMaxKhz;
         if (s.hotTenths > 0) HOT_ZONE_TENTHS = s.hotTenths;
 
-        // 会话起落 / 新前台应用 → 写诊断日志
-        if (session && !lastSession) logEvent("检测到游戏会话");
-        if (!session && lastSession) logEvent("游戏会话结束");
+        // 会话起落 → 写诊断日志；候选游戏只在「跃迁那一刻」记录（v1.6.2）
+        if (session && !lastSession) {
+            fireAttempts = 0;
+            logEvent("检测到游戏会话" + (top != null && !self ? "：" + top : ""));
+            if (top != null && !self) rememberGame(this, top);
+        } else if (!session && lastSession) {
+            logEvent("游戏会话结束");
+        }
         lastSession = session;
         if (!self && session && top != null && !top.equals(lastForeground)) {
             logEvent("前台应用 " + top);
-            rememberGame(this, top);
         }
         if (top != null) lastForeground = top;
+
+        // v1.6.4：只有助手真的应用了模式，才把前台包名记成游戏（避免 Operit/微信混进候选）
+        if (rememberPending) {
+            rememberPending = false;
+            if (top != null && !self) rememberGame(this, top);
+        }
 
         if (self) {
             PHASE = "自身/系统前台(待机)";
         } else if (!session) {
             PHASE = "无游戏会话(待机)";
         } else if (!allowed) {
-            PHASE = "不在白名单(跳过)";
+            PHASE = "不在白名单(跳过：" + top + ")";
+            if (top != null && !top.equals(lastSkipPkg)) {
+                lastSkipPkg = top;
+                logEvent("跳过 " + top + "（不在白名单）");
+            }
         } else if (need) {
             if (fire()) {
-                LAST_APPLIED = 3;
+                // v1.6.4：不乐观置位 —— 助手可能还没进入 in-game 状态而丢弃这次投递
                 lastFireTs = now;
+                fireAttempts++;
                 FIRE_COUNT++;
-                PHASE = "已补投 X模式";
+                PHASE = "已投递，等待助手确认";
+                if (fireAttempts <= 3 || fireAttempts % 5 == 0) {
+                    logEvent("投递#" + fireAttempts + " 前台 " + top);
+                }
             } else {
                 PHASE = "投递失败(检查 Shizuku)";
                 logEvent("投递失败 " + oneLine(LAST_ERROR));
             }
         } else {
-            SKIP_COUNT++;
+            // 每分钟最多记一次，避免计数飞涨与通知频繁刷新（v1.6.2）
+            if (now - lastSkipTs > 60000L) {
+                lastSkipTs = now;
+                SKIP_COUNT++;
+            }
             PHASE = "X模式生效中(跳过)";
         }
         nextDelay = (session && !self) ? TICK_ACTIVE_MS : TICK_IDLE_MS;
+
+        // v1.6.5：把阶段变化写进诊断日志，便于事后定位
+        if (!PHASE.equals(lastPhaseSeen)) {
+            lastPhaseSeen = PHASE;
+            logEvent("阶段 " + PHASE);
+        }
         updateNotificationIfChanged();
     }
 
-    /** 一次 shell 往返同时取回：前台包、电池温度、最高簇频率、最热热区。 */
+    /** 一次 shell 往返同时取回：前台包、电池温度、最高簇频率、机身温度、游戏助手 pid。 */
     private Sample sample() {
         Sample s = new Sample();
         try {
@@ -476,7 +580,8 @@ public class MonitorService extends Service {
                     + "echo BT:$(dumpsys battery 2>/dev/null | grep -m1 temperature | tr -dc '0-9'); "
                     + "echo CR:$(cat /sys/devices/system/cpu/cpu7/cpufreq/scaling_cur_freq 2>/dev/null); "
                     + "echo MX:$(cat /sys/devices/system/cpu/cpu7/cpufreq/cpuinfo_max_freq 2>/dev/null); "
-                    + "echo HZ:$(cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null | sort -n | tail -1)");
+                    + "echo GP:$(pidof com.oplus.games 2>/dev/null); "
+                    + CMD_BODY_TEMP);
             if (r.out != null) {
                 int from = 0;
                 while (true) {
@@ -490,6 +595,8 @@ public class MonitorService extends Service {
                         s.cpuCurKhz = parseInt(line.substring(3), -1);
                     } else if (line.startsWith("MX:")) {
                         s.cpuMaxKhz = parseInt(line.substring(3), -1);
+                    } else if (line.startsWith("GP:")) {
+                        s.gamesPid = firstInt(line.substring(3), -1);
                     } else if (line.startsWith("HZ:")) {
                         int milli = parseInt(line.substring(3), -1);
                         if (milli > 0) s.hotTenths = milli / 100;
@@ -516,33 +623,44 @@ public class MonitorService extends Service {
         }
     }
 
+    /** 取字符串里第一个数字（pidof 可能返回多个 pid，用空格分隔）。 */
+    private static int firstInt(String s, int def) {
+        if (s == null) return def;
+        String t = s.trim();
+        int i = 0;
+        while (i < t.length() && !Character.isWhitespace(t.charAt(i))) i++;
+        return parseInt(i == 0 ? t : t.substring(0, i), def);
+    }
+
     private static final class Sample {
         String top;
         int batteryTenths = -1;
         int cpuCurKhz = -1;
         int cpuMaxKhz = -1;
         int hotTenths = -1;
+        /** 游戏助手进程 pid；<=0 表示未运行。 */
+        int gamesPid = -1;
     }
 
     private void startWatcher() {
-        if (watcherStarted) return;
-        watcherStarted = true;
+        final int gen = ++watcherGen;
         Thread t = new Thread(new Runnable() {
             @Override
             public void run() {
-                while (RUNNING) {
+                while (RUNNING && gen == watcherGen) {
                     Process p = null;
                     try {
-                        String gp = pidOf(GAMES_PKG);
-                        if (gp == null) {
+                        int gp = pidOfInt(GAMES_PKG);
+                        if (gp <= 0) {
                             safeSleep(2000);
                             continue;
                         }
-                        p = shizukuProcess("logcat -v brief --pid=" + gp);
+                        watcherPid = gp;
+                        p = shizukuProcess("logcat -v brief -T 1 --pid=" + gp);
                         watcherProc = p;
                         BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
                         String line;
-                        while (RUNNING && (line = br.readLine()) != null) {
+                        while (RUNNING && gen == watcherGen && (line = br.readLine()) != null) {
                             onLogLine(line);
                         }
                     } catch (Throwable x) {
@@ -553,18 +671,23 @@ public class MonitorService extends Service {
                         } catch (Throwable ignored) {
                         }
                         watcherProc = null;
+                        watcherPid = -1;
                     }
                     safeSleep(1500);
                 }
-                watcherStarted = false;
+                Log.i(TAG, "watcher exit gen=" + gen);
             }
-        }, "xmode-logcat-watcher");
+        }, "xmode-logcat-watcher-" + gen);
         t.setDaemon(true);
         t.start();
     }
 
     private void onLogLine(String line) {
         if (line == null) return;
+        // v1.6.3：助手的 in-game 状态是最可靠的会话信号（含周期心跳）
+        if (line.contains("isInGame")) {
+            updateInGameFlag(line);
+        }
         if (line.contains("PerfModeFeature") || line.contains("GameStateMachine")
                 || line.contains("SpecialFeatureService")) {
             lastPerfTs = System.currentTimeMillis();
@@ -578,19 +701,70 @@ public class MonitorService extends Service {
                     logEvent("助手模式 " + LAST_APPLIED + " → " + v);
                 }
                 LAST_APPLIED = v;
+                if (v == 3) {
+                    // 助手确认生效 → 清零重试计数
+                    fireAttempts = 0;
+                }
+                if (v > 0) {
+                    // 助手真的应用了模式 → 下一轮把前台包名记成游戏
+                    rememberPending = true;
+                }
             } catch (Throwable ignored) {
             }
         }
+    }
+
+    /** Shizuku 服务在线且已授权（v1.6.2：tick 用它区分「真待机」与「没权限」）。 */
+    public static boolean shizukuReady() {
+        try {
+            if (!Shizuku.pingBinder()) return false;
+            return Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** 解析助手日志里的 isInGame 状态（两种写法：`isInGame = true` / `isInGame=false`）。 */
+    private void updateInGameFlag(String line) {
+        int i = line.indexOf("isInGame");
+        if (i < 0) return;
+        int p = i + "isInGame".length();
+        while (p < line.length() && (line.charAt(p) == ' ' || line.charAt(p) == '=')) p++;
+        boolean val;
+        if (line.startsWith("true", p)) {
+            val = true;
+        } else if (line.startsWith("false", p)) {
+            val = false;
+        } else {
+            return;
+        }
+        // v1.6.4：助手 false 抖得很厉害（实测十几秒翻一次），不据此清会话；
+        // 只把 true 当「正在游戏」的正向信号，过期交给 INGAME_STALE_MS。
+        if (!val) return;
+        inGameFlag = true;
+        long now = System.currentTimeMillis();
+        inGameTs = now;
+        lastPerfTs = now;
     }
 
     /** 投递一枪 mode=3（需 Shizuku shell 身份） */
     public static boolean fire() {
         try {
             if (!Shizuku.pingBinder()) {
+                LAST_ERROR = "Shizuku 未运行";
                 Log.w(TAG, "shizuku not running");
                 return false;
             }
-            if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
+            int perm;
+            try {
+                perm = Shizuku.checkSelfPermission();
+            } catch (Throwable t) {
+                LAST_ERROR = "权限检查异常: " + t;
+                Log.w(TAG, "fire: checkSelfPermission threw", t);
+                return false;
+            }
+            if (perm != PackageManager.PERMISSION_GRANTED) {
+                LAST_ERROR = "Shizuku 未授权 perm=" + perm;
                 Log.w(TAG, "shizuku permission not granted");
                 return false;
             }
@@ -600,9 +774,15 @@ public class MonitorService extends Service {
                     && !r.out.contains("Error")
                     && !r.out.contains("Exception")
                     && !r.out.contains("Failure");
-            if (!ok) Log.w(TAG, "fire failed rc=" + r.code + " out=" + r.out);
+            if (ok) {
+                LAST_ERROR = "";
+            } else {
+                LAST_ERROR = "rc=" + r.code + " " + oneLine(r.out);
+                Log.w(TAG, "fire failed rc=" + r.code + " out=" + r.out);
+            }
             return ok;
         } catch (Throwable t) {
+            LAST_ERROR = "异常: " + t;
             Log.w(TAG, "fire exception", t);
             return false;
         }
@@ -657,16 +837,12 @@ public class MonitorService extends Service {
         return t.length() > 160 ? t.substring(0, 160) + "…" : t;
     }
 
-    private static String pidOf(String name) {
+    private static int pidOfInt(String name) {
         try {
             ExecResult r = exec("pidof " + name);
-            String s = r.out == null ? "" : r.out.trim();
-            if (s.isEmpty()) return null;
-            int i = 0;
-            while (i < s.length() && !Character.isWhitespace(s.charAt(i))) i++;
-            return s.substring(0, i);
+            return firstInt(r.out, -1);
         } catch (Throwable t) {
-            return null;
+            return -1;
         }
     }
 
@@ -708,13 +884,21 @@ public class MonitorService extends Service {
 
     private static String parseResumed(String line) {
         if (line == null) return null;
-        int i = line.indexOf("u0 ");
-        if (i < 0) return null;
-        String rest = line.substring(i + 3).trim();
-        int slash = rest.indexOf('/');
-        if (slash <= 0) return null;
-        String pkg = rest.substring(0, slash).trim();
-        return isPkg(pkg) ? pkg : null;
+        // 形如：ActivityRecord{1a2b3c4 u0 com.pkg/.Act t123}
+        // 用户标识可能是 u0 / u10 / u999（分身、多用户），不能只找 "u0 "。
+        int n = line.length();
+        for (int i = 0; i < n; i++) {
+            if (line.charAt(i) != 'u') continue;
+            int j = i + 1;
+            while (j < n && Character.isDigit(line.charAt(j))) j++;
+            if (j == i + 1 || j >= n || line.charAt(j) != ' ') continue;
+            String rest = line.substring(j + 1).trim();
+            int slash = rest.indexOf('/');
+            if (slash <= 0) continue;
+            String pkg = rest.substring(0, slash).trim();
+            if (isPkg(pkg)) return pkg;
+        }
+        return null;
     }
 
     private static boolean isPkg(String s) {
@@ -811,30 +995,84 @@ public class MonitorService extends Service {
     private void createChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = getSystemService(NotificationManager.class);
-            if (nm != null && nm.getNotificationChannel(CH_ID) == null) {
+            if (nm == null) return;
+            // 删掉旧的「不重要」渠道（v1.6.2）
+            try {
+                if (nm.getNotificationChannel(CH_ID_OLD) != null) {
+                    nm.deleteNotificationChannel(CH_ID_OLD);
+                }
+            } catch (Throwable ignored) {
+            }
+            if (nm.getNotificationChannel(CH_ID) == null) {
                 NotificationChannel ch = new NotificationChannel(CH_ID, "X模式维持",
-                        NotificationManager.IMPORTANCE_LOW);
+                        NotificationManager.IMPORTANCE_DEFAULT);
                 ch.setDescription("游戏时自动维持官方 X 模式");
                 ch.setShowBadge(false);
+                ch.setSound(null, null);
+                ch.enableVibration(false);
                 nm.createNotificationChannel(ch);
             }
         }
     }
 
     private void updateNotificationIfChanged() {
+        // v1.6.6：标题也随状态变化，所以一并纳入去重键
+        String title = notiTitle();
         String text = buildStatus();
-        if (text.equals(lastNoti)) return;
-        lastNoti = text;
+        String key = title + "\n" + text;
+        if (key.equals(lastNoti)) return;
+        lastNoti = key;
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null) nm.notify(NOTI_ID, buildNotification(text));
+        if (nm != null) nm.notify(NOTI_ID, buildNotification(title, text));
+    }
+
+    /** v1.6.6：通知标题随状态变化，作为「X 模式是否真的在生效」的可信指示器。 */
+    private String notiTitle() {
+        if (PHASE.startsWith("已停止")) return "X模式助手 · 已停止";
+        if (PHASE.startsWith("Shizuku")) return "X模式助手 · Shizuku 未连接";
+        if (PHASE.startsWith("不在白名单")) return "不在白名单 · 已跳过";
+        if (!IN_SESSION) return "X模式助手 · 监控中(待机)";
+        if (LAST_APPLIED == 3) return "X模式生效中";
+        if (PHASE.startsWith("已投递")) return "已投递，等待助手生效…";
+        if (PHASE.startsWith("投递失败")) return "投递失败 · 检查 Shizuku";
+        return "X模式助手 · 监控中";
+    }
+
+    /** 应用名缓存，避免每次刷新通知都查 PackageManager。 */
+    private volatile String labelPkg = "";
+    private volatile String labelTxt = "";
+
+    private String appLabel(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return null;
+        if (pkg.equals(labelPkg)) return labelTxt;
+        String out = pkg;
+        try {
+            PackageManager pm = getPackageManager();
+            out = String.valueOf(pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)));
+        } catch (Throwable ignored) {
+        }
+        labelPkg = pkg;
+        labelTxt = out;
+        return out;
     }
 
     private String buildStatus() {
-        String temp = BATTERY_TENTHS > 0
-                ? String.format(Locale.US, "%.1f℃  |  ", BATTERY_TENTHS / 10f)
-                : "";
-        return PHASE + "  |  " + temp + "模式=" + LAST_APPLIED
-                + "  |  补投" + FIRE_COUNT + "次/跳过" + SKIP_COUNT + "次";
+        StringBuilder sb = new StringBuilder();
+        // v1.6.7：正文优先显示前台应用的中文名，读起来比包名直观
+        String fg = appLabel(lastForeground);
+        if (fg != null && !fg.isEmpty()) {
+            sb.append("前台 ").append(fg);
+            if (PHASE.startsWith("不在白名单")) sb.append("（白名单外）");
+        } else {
+            sb.append(PHASE);
+        }
+        if (BATTERY_TENTHS > 0) {
+            sb.append(" · 机身 ").append(String.format(Locale.US, "%.1f℃", BATTERY_TENTHS / 10f));
+        }
+        sb.append(" · 助手模式 ").append(LAST_APPLIED);
+        sb.append('\n').append("补投 ").append(FIRE_COUNT)
+                .append(" 次 · 跳过 ").append(SKIP_COUNT).append(" 次");
+        return sb.toString();
     }
 
     private int piFlags() {
@@ -844,12 +1082,12 @@ public class MonitorService extends Service {
     }
 
     @SuppressWarnings("deprecation")
-    private Notification buildNotification(String text) {
+    private Notification buildNotification(String title, String text) {
         Notification.Builder b = (Build.VERSION.SDK_INT >= 26)
                 ? new Notification.Builder(this, CH_ID)
                 : new Notification.Builder(this);
         b.setSmallIcon(android.R.drawable.stat_notify_sync)
-                .setContentTitle("X模式助手运行中")
+                .setContentTitle(title)
                 .setContentText(text)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true);

@@ -62,9 +62,6 @@ public class XModeUi {
         /** 点「Shizuku 服务」行（或右侧胶囊）。 */
         void onShizuku();
 
-        /** 点「使用情况访问」行（或右侧胶囊）。 */
-        void onUsageAccess();
-
         /** 点「自动化测试开关」行（或右侧胶囊）。 */
         void onAutoTest();
 
@@ -104,12 +101,14 @@ public class XModeUi {
         public boolean shizukuRunning;
         /** Shizuku 是否已对本应用授权。 */
         public boolean shizukuGranted;
-        /** 「使用情况访问」是否已授权。 */
-        public boolean usageAccess;
         /** 是否已忽略电池优化。 */
         public boolean batteryIgnored;
         /** 常驻监控是否在运行。 */
         public boolean monitoring;
+        /** 当前是否处于游戏会话中（v1.6.2：判定「生效中」还需它）。 */
+        public boolean inSession;
+        /** 游戏助手版本名（关于页「适配」行用）；空串表示未知。 */
+        public String gamesVersion = "";
         /** 阶段文案，例如「X模式生效中(跳过)」「自身/系统前台(待机)」。 */
         public String phase = "";
         /** 游戏助手当前模式，-1 表示未知。 */
@@ -162,7 +161,6 @@ public class XModeUi {
     private final float density;
 
     private final Row rowShizuku = new Row();
-    private final Row rowUsage = new Row();
     private final Row rowAutoTest = new Row();
     private final Row rowBattery = new Row();
 
@@ -187,6 +185,7 @@ public class XModeUi {
     private TextView logView;
     private TextView logToggle;
     private TextView aboutVersion;
+    private TextView aboutGamesVersion;
     private String lastWlSig = "";
     private String lastLogSig = "";
 
@@ -226,7 +225,7 @@ public class XModeUi {
         }
         root();
 
-        final boolean effective = state.monitoring && state.mode == 3;
+        final boolean effective = state.monitoring && state.mode == 3 && state.inSession;
 
         // 顶部 Shizuku 胶囊
         int pillColor = state.shizukuGranted ? GREEN : state.shizukuRunning ? AMBER : RED;
@@ -263,11 +262,6 @@ public class XModeUi {
                 state.shizukuGranted ? "已就绪" : "去授权",
                 state.shizukuGranted);
 
-        setRow(rowUsage,
-                state.usageAccess ? GREEN : AMBER,
-                state.usageAccess ? "已就绪" : "去授权",
-                state.usageAccess);
-
         // 该开关存在游戏助手私有存储里，本应用无从得知，固定标注为需手动确认
         setRow(rowAutoTest, VIOLET, "打开开关", false);
 
@@ -278,12 +272,16 @@ public class XModeUi {
 
         // ── v1.3：版本号 / 实时状态 / 白名单 / 诊断日志 ──
         String ver = (state.versionName == null || state.versionName.isEmpty())
-                ? "1.6.1" : state.versionName;
+                ? "1.6.5" : state.versionName;
         if (subTitle != null) {
             subTitle.setText("v" + ver + " · ColorOS 游戏助手");
         }
         if (aboutVersion != null) {
             aboutVersion.setText("v" + ver);
+        }
+        if (aboutGamesVersion != null) {
+            String gv = state.gamesVersion == null ? "" : state.gamesVersion.trim();
+            aboutGamesVersion.setText("游戏助手 " + (gv.isEmpty() ? "未知" : gv));
         }
 
         if (statBattery != null) {
@@ -371,6 +369,10 @@ public class XModeUi {
             }
         } else if (wl.isEmpty()) {
             wlBox.addView(hint("玩过一次游戏后，这里会出现可选的应用"));
+        }
+
+        if (!wl.isEmpty()) {
+            wlBox.addView(hint("注意：白名单非空时，只对以上游戏维持 X 模式，其他游戏会被跳过"));
         }
     }
 
@@ -538,11 +540,10 @@ public class XModeUi {
         column.addView(links, top(10));
 
         column.addView(sectionLabel("使用步骤"), top(20));
-        column.addView(infoCard("四步搞定", "① 授权 Shizuku（一次即可，重启手机后无需重授）\n"
-                + "② 允许「使用情况访问」，用于判定前台是否游戏\n"
-                + "③ 进游戏助手的隐藏页，只打开第一项「自动化测试」\n"
-                + "④ 忽略电池优化，再点首页「启动常驻监控」\n\n"
-                + "之后正常进游戏即可，助手切到 X 模式后本应用会自动维持。"), top(10));
+        column.addView(infoCard("三步搞定", "① 授权 Shizuku（一次即可，重启手机后无需重授）\n"
+                + "② 进游戏助手的隐藏页，只打开第一项「自动化测试」\n"
+                + "③ 忽略电池优化，再回首页点「启动常驻监控」\n\n"
+                + "之后正常进游戏即可：助手切到 X 模式后本应用会自动维持。"), top(10));
 
         column.addView(sectionLabel("风险提示"), top(20));
         column.addView(infoCard("请自行评估", "X 模式是官方最激进的性能策略，官方形态要求配专用散热背夹。"
@@ -628,6 +629,17 @@ public class XModeUi {
             return true;
         }
         return false;
+    }
+
+    /** 当前页面编号（0 首页 / 1 关于 / 2 许可证），供宿主在界面重建后恢复。 */
+    public int page() {
+        return currentPage;
+    }
+
+    /** 恢复页面（界面重建后调用，例如旋转屏幕）。 */
+    public void setPage(int page) {
+        if (page < 0 || page > 2) return;
+        selectPage(page);
     }
 
     /** 切换页面（0 首页 / 1 关于 / 2 许可证）。 */
@@ -894,16 +906,6 @@ public class XModeUi {
                     }
                 });
         card.addView(hDivider());
-        addRow(card, rowUsage, XIcon.CLOCK, BLUE,
-                "使用情况访问", "前台游戏判定", new Runnable() {
-                    @Override
-                    public void run() {
-                        if (listener != null) {
-                            listener.onUsageAccess();
-                        }
-                    }
-                });
-        card.addView(hDivider());
         addRow(card, rowAutoTest, XIcon.SLIDERS, VIOLET,
                 "自动化测试开关", "游戏助手隐藏页总闸", new Runnable() {
                     @Override
@@ -1057,7 +1059,7 @@ public class XModeUi {
         stats.addView(vDivider());
         statCpu = addStat(stats, "CPU 最高簇");
         stats.addView(vDivider());
-        statHot = addStat(stats, "最热热区");
+        statHot = addStat(stats, "机身温度");
         card.addView(stats);
 
         return card;
@@ -1159,11 +1161,11 @@ public class XModeUi {
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setBackground(cardBg(22, CARD_ALT, STROKE));
 
-        aboutVersion = addKv(card, "版本", "v1.6.1");
+        aboutVersion = addKv(card, "版本", "v1.6.5");
         addKv(card, "作者", AUTHOR);
         addKv(card, "许可", "MIT License");
         addKv(card, "包名", "com.operit.xmode");
-        addKv(card, "适配", "ColorOS 游戏助手 10.24.20");
+        aboutGamesVersion = addKv(card, "适配", "游戏助手 —");
         return card;
     }
 
