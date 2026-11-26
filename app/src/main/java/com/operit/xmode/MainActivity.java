@@ -267,8 +267,22 @@ public class MainActivity extends Activity implements XModeUi.Listener {
     /** 关于页「源码仓库」：交给系统浏览器打开。 */
     @Override
     public void onOpenRepo() {
+        openUrl(XModeUi.REPO_URL);
+    }
+
+    /** v1.6.8：关于页各入口统一跳转（项目主页 / Releases / 文档 / 反馈 / Shizuku）。 */
+    @Override
+    public void onOpenUrl(String url) {
+        openUrl(url);
+    }
+
+    /** 用系统浏览器打开链接；没有可用浏览器时给可见提示，不静默失败。 */
+    private void openUrl(String url) {
+        if (url == null || url.trim().isEmpty()) {
+            return;
+        }
         try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(XModeUi.REPO_URL));
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.trim()));
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
         } catch (Throwable t) {

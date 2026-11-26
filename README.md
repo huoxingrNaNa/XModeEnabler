@@ -1,13 +1,16 @@
 # XModeEnabler · X模式助手
 
+[![latest release](https://img.shields.io/github/v/release/huoxingrNaNa/XModeEnabler?label=release&color=ff6a1a)](https://github.com/huoxingrNaNa/XModeEnabler/releases/latest)
+[![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-35d1a4)](https://huoxingrnana.github.io/XModeEnabler/)
+[![license](https://img.shields.io/github/license/huoxingrNaNa/XModeEnabler?color=ffb066)](LICENSE)
+
 > **⚠️ 使用前必读：请搭配散热背夹（散热器）使用**
 > 本应用只负责「让第三方散热器也能触发官方 X 模式」，**它本身不提供任何制冷能力**。
 > 不接外置散热就开 X 模式，等于把手机推到最激进的功耗策略里跑，结果通常是**烫手机 + 高温降频**。
-
 - 设备验证：**OnePlus PLQ110**，ColorOS / Android 16（SDK 36），arm64-v8a
 - 目标应用：`com.oplus.games`（游戏助手 v10.24.20）
 - **无需 Root**：全程通过 **Shizuku** 以 `shell` 身份投递官方指令
-- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.7**
+- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.8**（上面的徽章自动跟随最新 Release）
 
 ---
 
@@ -210,6 +213,7 @@ XModeEnabler/
 - **v1.6.5**：`logcat` 加 `-T 1`（修启动时把历史缓冲当新事件）；重试节奏改 8 / 15 / 30 秒三档
 - **v1.6.6**：通知栏改为**状态指示器**（标题随真实状态变化）
 - **v1.6.7**：宿主包名视为「自身」；通知正文显示应用中文名
+- **v1.6.8**：关于页新增「链接与文档」组（项目主页 / 最新版本 / 文档 / 更新日志 / 反馈 / 仓库 / Shizuku 官网，统一走 `ACTION_VIEW`）；版本号改为运行时读 `versionName`，代码里不再写死
 
 v1.1 的性能优化细节见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
 静态项目主页见 [`docs/index.html`](docs/index.html)（可直接用 GitHub Pages 托管）。

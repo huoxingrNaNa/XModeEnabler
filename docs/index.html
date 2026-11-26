@@ -89,11 +89,11 @@
   <div class="badges">
     <span class="badge"><b>无需 Root</b> · Shizuku shell</span>
     <span class="badge">ColorOS / Android 16</span>
-    <span class="badge">v1.6.7</span>
+    <span class="badge" id="verBadge">v1.6.8</span>
     <span class="badge">MIT License</span>
   </div>
   <div class="cta">
-    <a class="btn primary" href="https://github.com/huoxingrNaNa/XModeEnabler">源码仓库</a>
+    <a class="btn primary" id="dlBtn" href="https://github.com/huoxingrNaNa/XModeEnabler/releases/latest">下载最新版本</a>
     <a class="btn" href="https://github.com/huoxingrNaNa/XModeEnabler/blob/main/CHANGELOG.md">更新日志</a>
     <a class="btn" href="https://github.com/huoxingrNaNa/XModeEnabler/blob/main/README.md">完整文档</a>
   </div>
@@ -191,5 +191,28 @@
 </footer>
 
 </div>
+<script>
+/* v1.6.8：版本徽章与下载按钮改为自动读取 GitHub 最新 Release，
+   以后发版不用再改这个页面。接口失败时静默保留 HTML 里的兜底文案。 */
+(function () {
+  var API = 'https://api.github.com/repos/huoxingrNaNa/XModeEnabler/releases/latest';
+  var badge = document.getElementById('verBadge');
+  var btn = document.getElementById('dlBtn');
+  fetch(API, { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) {
+      if (!d || !d.tag_name) return;
+      if (badge) badge.textContent = d.tag_name;
+      var apk = (d.assets || []).filter(function (a) {
+        return /\.apk$/i.test(a.name);
+      })[0];
+      if (btn) {
+        btn.href = apk ? apk.browser_download_url : d.html_url;
+        btn.textContent = apk ? '下载 ' + d.tag_name + ' APK' : '下载最新版本';
+      }
+    })
+    .catch(function () { /* 离线或被限流时用兜底文案 */ });
+})();
+</script>
 </body>
 </html>

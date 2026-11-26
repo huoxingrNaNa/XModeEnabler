@@ -39,6 +39,14 @@ public class XModeUi {
     /** 源码仓库地址（关于页「打开仓库」和 MainActivity 共用）。 */
     public static final String REPO_URL = "https://github.com/" + AUTHOR + "/XModeEnabler";
 
+    /** v1.6.8：关于页可跳转的其余外部地址。 */
+    public static final String SITE_URL = "https://huoxingrnana.github.io/XModeEnabler/";
+    public static final String RELEASE_URL = REPO_URL + "/releases/latest";
+    public static final String README_URL = REPO_URL + "/blob/main/README.md";
+    public static final String CHANGELOG_URL = REPO_URL + "/blob/main/CHANGELOG.md";
+    public static final String ISSUES_URL = REPO_URL + "/issues/new";
+    public static final String SHIZUKU_URL = "https://shizuku.rikka.app/";
+
     /** 本应用许可：MIT 全文（关于页→许可证页展示）。 */
     private static final String MIT_TEXT =
             "Copyright (c) 2026 " + AUTHOR + "\n\n"
@@ -87,6 +95,9 @@ public class XModeUi {
 
         /** 在浏览器打开源码仓库。 */
         void onOpenRepo();
+
+        /** v1.6.8：在浏览器打开任意链接（关于页各入口统一走这里）。 */
+        void onOpenUrl(String url);
 
         /** 切换诊断日志记录开关。 */
         void onToggleLog();
@@ -186,6 +197,8 @@ public class XModeUi {
     private TextView logToggle;
     private TextView aboutVersion;
     private TextView aboutGamesVersion;
+    /** v1.6.8：运行时读到的本应用版本名（唯一版本来源，代码里不再写死）。 */
+    private final String ownVersion;
     private String lastWlSig = "";
     private String lastLogSig = "";
 
@@ -208,6 +221,20 @@ public class XModeUi {
         this.context = context;
         this.listener = listener;
         this.density = context.getResources().getDisplayMetrics().density;
+        this.ownVersion = readOwnVersion(context);
+    }
+
+    /**
+     * v1.6.8：版本号改为**运行时读取**（PackageManager 读本应用 versionName），
+     * 不在代码里写死任何版本字符串，避免忘记改导致界面显示出旧版本。
+     */
+    private static String readOwnVersion(Context context) {
+        try {
+            return context.getPackageManager()
+                    .getPackageInfo(context.getPackageName(), 0).versionName;
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     /** 界面根视图，交给宿主 setContentView。 */
@@ -272,7 +299,10 @@ public class XModeUi {
 
         // ── v1.3：版本号 / 实时状态 / 白名单 / 诊断日志 ──
         String ver = (state.versionName == null || state.versionName.isEmpty())
-                ? "1.6.5" : state.versionName;
+                ? ownVersion : state.versionName;
+        if (ver == null || ver.isEmpty()) {
+            ver = "—";
+        }
         if (subTitle != null) {
             subTitle.setText("v" + ver + " · ColorOS 游戏助手");
         }
@@ -515,20 +545,25 @@ public class XModeUi {
         column.addView(sectionLabel("应用信息"), top(26));
         column.addView(buildAbout(), top(10));
 
-        // 可点击入口：打开仓库 / 查看许可证
+        // 可点击入口（v1.6.8：全部接上外部跳转）
+        column.addView(sectionLabel("链接与文档"), top(20));
         LinearLayout links = new LinearLayout(context);
         links.setOrientation(LinearLayout.VERTICAL);
         links.setPadding(dp(4), dp(4), dp(4), dp(4));
         links.setBackground(cardBg(22, CARD_ALT, STROKE));
-        links.addView(navRow("源码仓库", "github.com/" + AUTHOR + "/XModeEnabler",
-                new Runnable() {
-                    @Override
-                    public void run() {
-                        if (listener != null) {
-                            listener.onOpenRepo();
-                        }
-                    }
-                }));
+        links.addView(navUrl("项目主页", "在线说明", SITE_URL));
+        links.addView(hDivider());
+        links.addView(navUrl("下载最新版本", "GitHub Releases", RELEASE_URL));
+        links.addView(hDivider());
+        links.addView(navUrl("使用文档", "README", README_URL));
+        links.addView(hDivider());
+        links.addView(navUrl("更新日志", "CHANGELOG", CHANGELOG_URL));
+        links.addView(hDivider());
+        links.addView(navUrl("问题反馈", "GitHub Issues", ISSUES_URL));
+        links.addView(hDivider());
+        links.addView(navUrl("源码仓库", "github.com/" + AUTHOR + "/XModeEnabler", REPO_URL));
+        links.addView(hDivider());
+        links.addView(navUrl("Shizuku 官网", "shizuku.rikka.app", SHIZUKU_URL));
         links.addView(hDivider());
         links.addView(navRow("开源许可证", "MIT · Apache-2.0",
                 new Runnable() {
@@ -714,7 +749,6 @@ public class XModeUi {
         valLp.rightMargin = dp(6);
         line.addView(val, valLp);
         line.addView(text("›", 16, ACCENT, true));
-
         line.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -722,6 +756,18 @@ public class XModeUi {
             }
         });
         return line;
+    }
+
+    /** v1.6.8：外部链接行（统一交给宿主用浏览器打开）。 */
+    private View navUrl(String key, String value, final String url) {
+        return navRow(key, value, new Runnable() {
+            @Override
+            public void run() {
+                if (listener != null) {
+                    listener.onOpenUrl(url);
+                }
+            }
+        });
     }
 
     /** 许可证页（从关于页进入，底部仍停在「关于」tab）。 */
@@ -1161,7 +1207,7 @@ public class XModeUi {
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setBackground(cardBg(22, CARD_ALT, STROKE));
 
-        aboutVersion = addKv(card, "版本", "v1.6.5");
+        aboutVersion = addKv(card, "版本", "v" + (ownVersion.isEmpty() ? "—" : ownVersion));
         addKv(card, "作者", AUTHOR);
         addKv(card, "许可", "MIT License");
         addKv(card, "包名", "com.operit.xmode");
