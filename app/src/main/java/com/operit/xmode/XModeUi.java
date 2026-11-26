@@ -278,7 +278,7 @@ public class XModeUi {
 
         // ── v1.3：版本号 / 实时状态 / 白名单 / 诊断日志 ──
         String ver = (state.versionName == null || state.versionName.isEmpty())
-                ? "1.6" : state.versionName;
+                ? "1.6.1" : state.versionName;
         if (subTitle != null) {
             subTitle.setText("v" + ver + " · ColorOS 游戏助手");
         }
@@ -775,7 +775,7 @@ public class XModeUi {
         header.addView(titles, titlesLp);
 
         titles.addView(text("X模式助手", 17, TEXT_MAIN, true));
-        subTitle = text("v1.6 · ColorOS 游戏助手", 11, TEXT_SUB, false);
+        subTitle = text("v1.6.1 · ColorOS 游戏助手", 11, TEXT_SUB, false);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(WC, WC);
         subLp.topMargin = dp(3);
         titles.addView(subTitle, subLp);
@@ -1159,7 +1159,7 @@ public class XModeUi {
         card.setPadding(dp(16), dp(14), dp(16), dp(14));
         card.setBackground(cardBg(22, CARD_ALT, STROKE));
 
-        aboutVersion = addKv(card, "版本", "v1.6");
+        aboutVersion = addKv(card, "版本", "v1.6.1");
         addKv(card, "作者", AUTHOR);
         addKv(card, "许可", "MIT License");
         addKv(card, "包名", "com.operit.xmode");

@@ -88,6 +88,9 @@ public class MonitorService extends Service {
 
     private static final ArrayDeque<String> LOG_Q = new ArrayDeque<>();
     private static SharedPreferences prefs;
+    /** 事件落盘文件（v1.6.1）：让导出与重启后的诊断日志都有内容。 */
+    private static java.io.File logFile;
+    private static boolean logLoaded = false;
 
     private static final String CH_ID = "xmode_channel";
     private static final int NOTI_ID = 1001;
@@ -138,6 +141,13 @@ public class MonitorService extends Service {
             WHITELIST = wl;
             KNOWN_GAMES = new ArrayList<>(prefs.getStringSet(K_GAMES, new LinkedHashSet<String>()));
             LOG_ENABLED = prefs.getBoolean(K_LOG, true);
+            if (logFile == null) {
+                logFile = new java.io.File(c.getApplicationContext().getFilesDir(), "events.log");
+            }
+            if (!logLoaded) {
+                logLoaded = true;
+                loadLogsFromDisk();
+            }
         } catch (Throwable t) {
             Log.w(TAG, "initPrefs failed", t);
         }
@@ -155,6 +165,7 @@ public class MonitorService extends Service {
             LOG_Q.addLast(line);
             while (LOG_Q.size() > LOG_MAX) LOG_Q.removeFirst();
             LOGS = new ArrayList<>(LOG_Q);
+            appendLogLineLocked(line);
         }
         Log.i(TAG, "evt " + msg);
     }
@@ -164,6 +175,65 @@ public class MonitorService extends Service {
         synchronized (LOG_Q) {
             LOG_Q.clear();
             LOGS = Collections.emptyList();
+            rewriteLogFileLocked();
+        }
+    }
+
+    // ── 事件落盘（v1.6.1）：应用重启 / 服务未运行时导出仍有内容 ──
+
+    private static void appendLogLineLocked(String line) {
+        try {
+            if (logFile == null) return;
+            java.io.FileWriter fw = new java.io.FileWriter(logFile, true);
+            try {
+                fw.write(line + "\n");
+            } finally {
+                fw.close();
+            }
+            if (logFile.length() > 24000L) {
+                rewriteLogFileLocked();
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "log write failed", t);
+        }
+    }
+
+    private static void rewriteLogFileLocked() {
+        try {
+            if (logFile == null) return;
+            java.io.FileWriter fw = new java.io.FileWriter(logFile, false);
+            try {
+                for (String l : LOG_Q) fw.write(l + "\n");
+            } finally {
+                fw.close();
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "log rewrite failed", t);
+        }
+    }
+
+    private static void loadLogsFromDisk() {
+        try {
+            if (logFile == null || !logFile.exists()) return;
+            ArrayDeque<String> dq = new ArrayDeque<>();
+            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.FileReader(logFile));
+            try {
+                String l;
+                while ((l = br.readLine()) != null) {
+                    if (l.trim().isEmpty()) continue;
+                    dq.addLast(l);
+                    while (dq.size() > LOG_MAX) dq.removeFirst();
+                }
+            } finally {
+                br.close();
+            }
+            synchronized (LOG_Q) {
+                LOG_Q.clear();
+                LOG_Q.addAll(dq);
+                LOGS = new ArrayList<>(LOG_Q);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "log load failed", t);
         }
     }
 
@@ -186,6 +256,7 @@ public class MonitorService extends Service {
         sb.append("X模式助手 · 诊断日志\n")
                 .append("导出时间: ").append(now).append('\n')
                 .append("记录开关: ").append(LOG_ENABLED ? "开" : "关").append('\n')
+                .append("常驻服务: ").append(RUNNING ? "运行中" : "未运行").append('\n')
                 .append("阶段: ").append(PHASE).append('\n')
                 .append("助手模式: ").append(LAST_APPLIED).append('\n')
                 .append("补投 / 跳过: ").append(FIRE_COUNT).append(" / ").append(SKIP_COUNT).append('\n')
@@ -205,7 +276,7 @@ public class MonitorService extends Service {
             copy = new ArrayList<>(LOG_Q);
         }
         if (copy.isEmpty()) {
-            sb.append("(无事件)\n");
+            sb.append("(无事件：常驻监控未启动，或刚刚启动尚无事件)\n");
         } else {
             for (String line : copy) sb.append(line).append('\n');
         }

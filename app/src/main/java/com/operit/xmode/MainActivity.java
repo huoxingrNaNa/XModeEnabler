@@ -42,9 +42,6 @@ public class MainActivity extends Activity implements XModeUi.Listener {
     /** 导出诊断日志的系统「另存为」请求码。 */
     private static final int REQ_EXPORT = 1003;
 
-    /** 导出过程中暂存的文本（等用户选完保存位置再写）。 */
-    private String pendingExport;
-
     /** 「手动投递」进行中标记，防止连点并发投递。 */
     private volatile boolean fireBusy = false;
 
@@ -290,7 +287,6 @@ public class MainActivity extends Activity implements XModeUi.Listener {
     /** 导出诊断日志：走系统「另存为」，让用户自己选位置（无需存储权限）。 */
     @Override
     public void onExportLog() {
-        String text = MonitorService.exportText();
         String name = "xmode-log-"
                 + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".txt";
         try {
@@ -298,10 +294,8 @@ public class MainActivity extends Activity implements XModeUi.Listener {
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("text/plain");
             intent.putExtra(Intent.EXTRA_TITLE, name);
-            pendingExport = text;
             startActivityForResult(intent, REQ_EXPORT);
         } catch (Throwable t) {
-            pendingExport = null;
             toast("无法打开保存面板：" + t);
         }
     }
@@ -311,18 +305,16 @@ public class MainActivity extends Activity implements XModeUi.Listener {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQ_EXPORT) return;
         if (resultCode != RESULT_OK || data == null || data.getData() == null) {
-            pendingExport = null;
             toast("已取消导出");
             return;
         }
-        final String text = pendingExport;
-        pendingExport = null;
-        if (text == null) return;
+        // 不依赖字段中转：返回时重新生成文本，避免 Activity 被重建后写出空文件
+        final String text = MonitorService.exportText();
         try (OutputStream out = getContentResolver().openOutputStream(data.getData())) {
             if (out == null) throw new IllegalStateException("openOutputStream returned null");
             out.write(text.getBytes("UTF-8"));
             out.flush();
-            toast("已导出诊断日志");
+            toast("已导出诊断日志（" + text.length() + " 字符）");
         } catch (Throwable t) {
             toast("写入失败：" + t);
         }

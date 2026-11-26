@@ -8,6 +8,7 @@ sha256sum XModeEnabler-vX.Y-release.apk
 
 | 版本 | 文件 | 大小 | SHA-256 |
 |---|---|---|---|
+| v1.6.1 | `XModeEnabler-v1.6.1-release.apk` | 54,800 B | `5bf692349fafa923d025ab166d68a7cd3c65d6b2cbe9a35c37a0ab74580aef0c` |
 | v1.6 | `XModeEnabler-v1.6-release.apk` | 54,156 B | `747bfc1a67537590cd3016c4970b03765bc50246e1eecc3d6cf15a1b3564dc5e` |
 | v1.5 | `XModeEnabler-v1.5-release.apk` | 52,352 B | `e21526dd1d0a34a3a189c8984117f8a5bea7b05cc3e351f29763039695ed8bee` |
 | v1.1 | `XModeEnabler-v1.1-release.apk` | 41,663 B | `c199f5b2c3bce238051c476a44445bc331fd7deb89edc3706a10d31032d86a7f`（debug 签名） |
