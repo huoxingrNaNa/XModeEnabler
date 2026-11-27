@@ -98,6 +98,9 @@ public class MonitorService extends Service {
     /** v1.6.2：旧渠道重要性为 LOW，系统判为「不重要」会折叠，按钮不易看到，已废弃。 */
     private static final String CH_ID_OLD = "xmode_channel";
     private static final int NOTI_ID = 1001;
+    /** v1.6.9：实时卡片（流体云 / 状态栏胶囊）走独立渠道与独立通知 id。 */
+    private static final String CH_LIVE = "xmode_live_v1";
+    private static final int LIVE_ID = 1002;
 
     private static final long TICK_ACTIVE_MS = 5000L;
     private static final long TICK_IDLE_MS = 10000L;
@@ -996,6 +999,26 @@ public class MonitorService extends Service {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = getSystemService(NotificationManager.class);
             if (nm == null) return;
+            // v1.6.9：独立的「实时卡片」渠道，IMPORTANCE_HIGH —— ColorOS 流体云 /
+            // Android 16 实时通知要求渠道级别够高，DEFAULT 的旧渠道不会升格。
+            // 渠道属性创建后不可改，所以用新 id；设为无声无振动，避免每次刷新响一下。
+            if (nm.getNotificationChannel(CH_LIVE) == null) {
+                NotificationChannel live = new NotificationChannel(CH_LIVE, "X模式实时卡片",
+                        NotificationManager.IMPORTANCE_HIGH);
+                live.setDescription("游戏时在状态栏胶囊 / 流体云显示 X 模式状态");
+                live.setShowBadge(false);
+                live.setSound(null, null);
+                live.enableVibration(false);
+                live.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+                nm.createNotificationChannel(live);
+            }
+            // v1.6.9：把系统侧的「流体云 / 实时活动」总开关状态记进日志，方便判断卡在哪
+            if (Build.VERSION.SDK_INT >= 36) {
+                try {
+                    Log.i(TAG, "evt 上岛可用=" + nm.canPostPromotedNotifications());
+                } catch (Throwable ignored) {
+                }
+            }
             // 删掉旧的「不重要」渠道（v1.6.2）
             try {
                 if (nm.getNotificationChannel(CH_ID_OLD) != null) {
@@ -1020,10 +1043,13 @@ public class MonitorService extends Service {
         String title = notiTitle();
         String text = buildStatus();
         String key = title + "\n" + text;
-        if (key.equals(lastNoti)) return;
-        lastNoti = key;
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null) nm.notify(NOTI_ID, buildNotification(title, text));
+        if (!key.equals(lastNoti)) {
+            lastNoti = key;
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) nm.notify(NOTI_ID, buildNotification(title, text));
+        }
+        // v1.6.9：实时卡片自带去重，不能受前台通知的去重短路影响
+        updateLiveCard(title, text);
     }
 
     /** v1.6.6：通知标题随状态变化，作为「X 模式是否真的在生效」的可信指示器。 */
@@ -1114,7 +1140,104 @@ public class MonitorService extends Service {
         } catch (Throwable t) {
             Log.w(TAG, "add notification actions failed", t);
         }
-        return b.build();
+
+        Notification n = b.build();
+        return n;
+    }
+
+    /** v1.6.9：实时卡片去重键。 */
+    private String lastLive = "";
+
+    /**
+     * v1.6.9：状态栏实时卡片 / ColorOS 流体云。
+     * 与前台服务通知分开：前台通知（id 1001）保证不被杀，
+     * 这一路（id 1002，渠道 IMPORTANCE_HIGH）负责升格成胶囊 / 实时动态。
+     * 照抄 AuroraViz 里已验证可行的写法。
+     */
+    private void updateLiveCard(String title, String text) {
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm == null) return;
+        boolean want = liveCardOn(this) && !PHASE.startsWith("已停止");
+        if (!want) {
+            if (!lastLive.isEmpty()) {
+                lastLive = "";
+                try {
+                    nm.cancel(LIVE_ID);
+                } catch (Throwable ignored) {
+                }
+            }
+            return;
+        }
+        String key = title + "\n" + text;
+        if (key.equals(lastLive)) return;
+
+        try {
+            Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                    ? new Notification.Builder(this, CH_LIVE)
+                    : new Notification.Builder(this);
+            b.setSmallIcon(android.R.drawable.stat_notify_sync)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setOngoing(true)
+                    .setOnlyAlertOnce(true)
+                    .setShowWhen(false)
+                    .setVisibility(Notification.VISIBILITY_PUBLIC)
+                    // 官方要求：不得 setColorized(true)，否则直接失去升格资格
+                    .setColor(0xFFFF6A1A)
+                    .setStyle(new Notification.BigTextStyle().bigText(text));
+            if (Build.VERSION.SDK_INT >= 36) {
+                String st = liveShortText();
+                if (st != null && !st.isEmpty()) {
+                    b.setShortCriticalText(st);
+                }
+            }
+            Intent open = new Intent(this, MainActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            b.setContentIntent(PendingIntent.getActivity(this, 20, open, piFlags()));
+
+            Notification n = b.build();
+            n.flags |= Notification.FLAG_ONGOING_EVENT;
+            // 主动请求升格为实时动态；系统不认则退化为普通通知，不会出错
+            n.extras.putBoolean("android.requestPromotedOngoing", true);
+            nm.notify(LIVE_ID, n);
+            lastLive = key;
+            Log.i(TAG, "evt 实时卡片 " + liveShortText());
+        } catch (Throwable t) {
+            Log.w(TAG, "live card failed", t);
+        }
+    }
+
+    /** v1.6.9：胶囊 / 实时卡片上的短文本（建议 ≤7 字符）。 */
+    private String liveShortText() {
+        if (!IN_SESSION && LAST_APPLIED != 3) {
+            return "待机";
+        }
+        if (LAST_APPLIED == 3) {
+            return BATTERY_TENTHS > 0
+                    ? String.format(Locale.US, "X%.0f℃", BATTERY_TENTHS / 10f)
+                    : "X生效";
+        }
+        return "投递中";
+    }
+
+    /** v1.6.9：状态栏实时卡片开关（默认开，可在 App 内关闭）。 */
+    private static final String KEY_LIVE_CARD = "live_card";
+
+    public static boolean liveCardOn(Context c) {
+        try {
+            return c.getApplicationContext().getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                    .getBoolean(KEY_LIVE_CARD, true);
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
+    public static void setLiveCard(Context c, boolean on) {
+        try {
+            c.getApplicationContext().getSharedPreferences(PREF, Context.MODE_PRIVATE)
+                    .edit().putBoolean(KEY_LIVE_CARD, on).apply();
+        } catch (Throwable ignored) {
+        }
     }
 
     private static final class ExecResult {

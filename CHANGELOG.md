@@ -2,6 +2,22 @@
 
 本项目的所有重要改动记录在此。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循语义化版本（`MAJOR.MINOR.PATCH`）。
+## [1.6.9] - 2026-11-27
+### 新增
+- **状态栏实时卡片（上岛 / ColorOS 流体云）**：游戏时在状态栏胶囊显示 X 模式状态，收起态文案 `X36℃` / `投递中` / `待机`，展开态显示完整正文
+  - 独立通知渠道 `xmode_live_v1`（`IMPORTANCE_HIGH`）+ 独立通知 id 1002，与前台服务通知（id 1001）分离，前台通知只管不被杀
+  - 按 Android 16 Live Updates 要求实现：`setOngoing` + `setOnlyAlertOnce` + `setShowWhen(false)` + `BigTextStyle` + `setColor`（**不** `setColorized`）+ `setShortCriticalText` + `extras.putBoolean("android.requestPromotedOngoing", true)`
+  - 单文件仿照 AuroraViz（同作者另一个项目）已验证可行的写法；`setLiveCard()` 预留开关，默认开
+
+### 变更
+- **`targetSdk` 34 → 36**：系统只对 targetSdk 36 的应用认可实时通知升格
+- 新增 `POST_PROMOTED_NOTIFICATIONS` 权限（targetSdk 36 时属普通权限，安装即授予）
+- 适配 edge-to-edge：新增 `applySystemBarsInsets()`，把系统栏 / 输入法 insets 加回根布局（targetSdk 35+ 强制全屏铺开）
+- 启动时日志记录 `evt 上岛可用=<canPostPromotedNotifications>`，可直接看出系统「流体云 / 实时活动」总开关是否打开
+
+### 修复
+- 通知去重短路会连带跳过实时卡片刷新，改为两路各自去重
+
 ## [1.6.8] - 2026-11-26
 ### 新增
 - **关于页新增「链接与文档」组**，全部可点跳转：项目主页 / 下载最新版本 / 使用文档 / 更新日志 / 问题反馈 / 源码仓库 / Shizuku 官网；许可证页仍留在应用内

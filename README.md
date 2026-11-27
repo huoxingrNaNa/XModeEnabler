@@ -10,7 +10,9 @@
 - 设备验证：**OnePlus PLQ110**，ColorOS / Android 16（SDK 36），arm64-v8a
 - 目标应用：`com.oplus.games`（游戏助手 v10.24.20）
 - **无需 Root**：全程通过 **Shizuku** 以 `shell` 身份投递官方指令
-- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.8**（上面的徽章自动跟随最新 Release）
+- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.9**（上面的徽章自动跟随最新 Release）
+- 状态可见：通知栏标题 + **状态栏胶囊（上岛 / 流体云）**，游戏时胶囊显示 `X36℃`
+- 编译 / 目标：`compileSdk 36` · `targetSdk 36`（上岛要求，见下）
 
 ---
 
@@ -214,9 +216,39 @@ XModeEnabler/
 - **v1.6.6**：通知栏改为**状态指示器**（标题随真实状态变化）
 - **v1.6.7**：宿主包名视为「自身」；通知正文显示应用中文名
 - **v1.6.8**：关于页新增「链接与文档」组（项目主页 / 最新版本 / 文档 / 更新日志 / 反馈 / 仓库 / Shizuku 官网，统一走 `ACTION_VIEW`）；版本号改为运行时读 `versionName`，代码里不再写死
+- **v1.6.9**：**上岛**（状态栏胶囊 / ColorOS 流体云）——独立 `IMPORTANCE_HIGH` 渠道 + 独立通知 id，按 Android 16 Live Updates 实现；`targetSdk` 34→36 并补 `POST_PROMOTED_NOTIFICATIONS`；适配 edge-to-edge insets；诊断日志增加 `上岛可用=`
 
 v1.1 的性能优化细节见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
 静态项目主页见 [`docs/index.html`](docs/index.html)（可直接用 GitHub Pages 托管）。
+---
+## 状态栏胶囊（上岛 / 流体云）
+游戏会话期间，除了通知栏，还会在**状态栏胶囊**里显示当前状态，收起态只有几个字：
+
+| 胶囊文案 | 含义 |
+|---|---|
+| `X36℃` | X 模式生效中（36 为机身温度） |
+| `投递中` | 指令已发出，助手尚未确认 |
+| `待机` | 监控在跑，当前没有游戏会话 |
+
+展开胶囊 = 完整正文（前台应用 · 机身温度 · 助手模式 · 补投/跳过次数）。
+
+**这是 Android 16 的实时通知（Live Updates）**，App 只负责"申请升格"，是否显示成胶囊由系统决定。代码侧满足的条件：
+
+- 持有 `POST_PROMOTED_NOTIFICATIONS`（targetSdk 36 时属普通权限，安装即授予）
+- `targetSdk 36` —— 系统只对 targetSdk 36 的应用认可升格
+- 通知带 `extras.putBoolean("android.requestPromotedOngoing", true)`
+- `setOngoing(true)` + `setOnlyAlertOnce(true)` + `setShowWhen(false)`
+- 样式为允许的种类（本项目用 `BigTextStyle`），且**不能** `setColorized(true)`
+- 短文本用 `setShortCriticalText()`，实测只显示 7 个字符以内
+- 渠道级别要高：本项目用独立渠道 `xmode_live_v1`（`IMPORTANCE_HIGH`），与前台服务通知分离
+
+系统侧还需要开着「流体云 / 实时活动」总开关（ColorOS：设置 › 通知与状态栏）。**这是用户级开关，App 无权代开**；App 启动时会把 `canPostPromotedNotifications()` 的值写进诊断日志（`evt 上岛可用=true/false`），一眼能看出是没开开关还是别的问题。
+
+| 环境 | 表现 |
+|---|---|
+| ColorOS 16（Android 16，一加 PLQ110） | ✅ 已实测：胶囊与展开卡片均正常 |
+| Android 15 及以下 | ❌ 无该 API，胶囊不出现，通知卡片照常 |
+
 ---
 ## 关于「游戏助手里不显示 X 模式」
 这一点必须先说清楚，避免误判：

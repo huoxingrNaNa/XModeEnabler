@@ -11,6 +11,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.view.View;
+import android.view.WindowInsets;
 import android.widget.Toast;
 
 import java.io.OutputStream;
@@ -82,6 +84,9 @@ public class MainActivity extends Activity implements XModeUi.Listener {
 
         ui = new XModeUi(this, this);
         setContentView(ui.root());
+        // v1.6.9：targetSdk 35+ 系统强制 edge-to-edge，必须自己把系统栏 insets 加回来，
+        // 否则内容会被状态栏 / 导航栏盖住。
+        applySystemBarsInsets(ui.root());
         if (savedInstanceState != null) {
             ui.setPage(savedInstanceState.getInt(KEY_PAGE, 0));
         }
@@ -262,6 +267,28 @@ public class MainActivity extends Activity implements XModeUi.Listener {
     public void onLogClear() {
         MonitorService.clearLog();
         render();
+    }
+
+    /** v1.6.9：把系统栏 / 输入法 insets 加回根视图（targetSdk 35+ 强制 edge-to-edge）。 */
+    private void applySystemBarsInsets(View root) {
+        if (root == null || Build.VERSION.SDK_INT < 30) {
+            return;
+        }
+        final int l = root.getPaddingLeft();
+        final int t = root.getPaddingTop();
+        final int r = root.getPaddingRight();
+        final int b = root.getPaddingBottom();
+        root.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+            @Override
+            public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                android.graphics.Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                v.setPadding(l + bars.left, t + bars.top, r + bars.right,
+                        b + Math.max(bars.bottom, ime.bottom));
+                return insets;
+            }
+        });
+        root.requestApplyInsets();
     }
 
     /** 关于页「源码仓库」：交给系统浏览器打开。 */

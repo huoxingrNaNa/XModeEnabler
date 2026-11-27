@@ -89,7 +89,8 @@
   <div class="badges">
     <span class="badge"><b>无需 Root</b> · Shizuku shell</span>
     <span class="badge">ColorOS / Android 16</span>
-    <span class="badge" id="verBadge">v1.6.8</span>
+    <span class="badge"><b>已上岛</b> · 流体云胶囊</span>
+    <span class="badge" id="verBadge">v1.6.9</span>
     <span class="badge">MIT License</span>
   </div>
   <div class="cta">
@@ -122,9 +123,28 @@
     <div class="card">
       <div class="ico">📊</div>
       <h3>状态看得见</h3>
-      <p>通知栏标题随真实状态变化，正文显示前台应用、机身温度、助手模式与补投次数，不用再猜有没有生效。</p>
+      <p>通知栏标题随真实状态变化，游戏时状态栏胶囊（上岛 / 流体云）显示 <code>X36℃</code>，不用再猜有没有生效。</p>
     </div>
   </div>
+</section>
+
+<section>
+  <h2>状态栏胶囊（上岛 / 流体云）</h2>
+  <p class="sub">Android 16 实时通知：收起态只有几个字，展开就是完整状态。</p>
+  <div class="tblwrap">
+    <table class="tbl">
+      <thead><tr><th>胶囊文案</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td class="ok">X36℃</td><td>X 模式生效中（36 为机身温度）</td></tr>
+        <tr><td class="warn">投递中</td><td>指令已发出，助手尚未确认</td></tr>
+        <tr><td>待机</td><td>监控在跑，当前没有游戏会话</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="kbd" style="margin-top:14px">
+    上岛需要 <code>targetSdk 36</code> + <code>POST_PROMOTED_NOTIFICATIONS</code> + <code>IMPORTANCE_HIGH</code> 独立渠道 +
+    <code>requestPromotedOngoing</code> extra，且不能 <code>setColorized(true)</code>；系统侧还需打开「流体云 / 实时活动」总开关。
+  </p>
 </section>
 
 <section>
