@@ -399,6 +399,11 @@ public class MainActivity extends Activity implements XModeUi.Listener {
         s.batteryIgnored = isIgnoringBattery();
 
         s.monitoring = MonitorService.RUNNING;
+        // v1.6.10：服务没在跑时，顺手把可能残留的实时卡片撤掉
+        // （进程被系统杀掉 / force-stop 时 onDestroy 不会执行，胶囊会停在旧文案）
+        if (!s.monitoring) {
+            MonitorService.cancelLiveCard(this);
+        }
         s.inSession = MonitorService.IN_SESSION;
         String phase = MonitorService.PHASE;
         s.phase = phase == null ? "" : phase;

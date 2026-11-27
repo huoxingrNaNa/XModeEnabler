@@ -10,7 +10,7 @@
 - 设备验证：**OnePlus PLQ110**，ColorOS / Android 16（SDK 36），arm64-v8a
 - 目标应用：`com.oplus.games`（游戏助手 v10.24.20）
 - **无需 Root**：全程通过 **Shizuku** 以 `shell` 身份投递官方指令
-- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.9**（上面的徽章自动跟随最新 Release）
+- 交付形态：独立 App（前台常驻服务），当前版本 **v1.6.11**（上面的徽章自动跟随最新 Release）
 - 状态可见：通知栏标题 + **状态栏胶囊（上岛 / 流体云）**，游戏时胶囊显示 `X36℃`
 - 编译 / 目标：`compileSdk 36` · `targetSdk 36`（上岛要求，见下）
 
@@ -217,6 +217,8 @@ XModeEnabler/
 - **v1.6.7**：宿主包名视为「自身」；通知正文显示应用中文名
 - **v1.6.8**：关于页新增「链接与文档」组（项目主页 / 最新版本 / 文档 / 更新日志 / 反馈 / 仓库 / Shizuku 官网，统一走 `ACTION_VIEW`）；版本号改为运行时读 `versionName`，代码里不再写死
 - **v1.6.9**：**上岛**（状态栏胶囊 / ColorOS 流体云）——独立 `IMPORTANCE_HIGH` 渠道 + 独立通知 id，按 Android 16 Live Updates 实现；`targetSdk` 34→36 并补 `POST_PROMOTED_NOTIFICATIONS`；适配 edge-to-edge insets；诊断日志增加 `上岛可用=`
+- **v1.6.10**：修复关闭监控后胶囊仍挂着旧文案——实时卡片是独立通知，服务停止时系统不会自动撤，改为 `onDestroy()` 显式撤卡，并在打开 App 时兜底再撤一次
+- **v1.6.11**：胶囊改用专属单色闪电图标（不再用系统「同步」图标）；实时卡片展开态补 `立即投递` / `停止` 两个按钮
 
 v1.1 的性能优化细节见 [docs/OPTIMIZATIONS.md](docs/OPTIMIZATIONS.md)。
 静态项目主页见 [`docs/index.html`](docs/index.html)（可直接用 GitHub Pages 托管）。

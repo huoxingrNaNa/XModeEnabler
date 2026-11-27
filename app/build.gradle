@@ -19,8 +19,8 @@ android {
         applicationId "com.operit.xmode"
         minSdk 26
         targetSdk 36
-        versionCode 20
-        versionName "1.6.9"
+        versionCode 22
+        versionName "1.6.11"
     }
 
     signingConfigs {

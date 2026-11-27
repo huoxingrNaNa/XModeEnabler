@@ -435,6 +435,10 @@ public class MonitorService extends Service {
             stopForeground(STOP_FOREGROUND_REMOVE);
         } catch (Throwable ignored) {
         }
+        // v1.6.10：实时卡片是独立通知，服务停止后系统不会自动撤掉，
+        // 必须显式 cancel，否则胶囊会一直停在旧文案上（用户实际遇到的 bug）
+        lastLive = "";
+        cancelLiveCard(this);
         Log.i(TAG, "monitor stopped, fired=" + FIRE_COUNT + " skipped=" + SKIP_COUNT);
         logEvent("监控已停止");
         super.onDestroy();
@@ -1112,7 +1116,7 @@ public class MonitorService extends Service {
         Notification.Builder b = (Build.VERSION.SDK_INT >= 26)
                 ? new Notification.Builder(this, CH_ID)
                 : new Notification.Builder(this);
-        b.setSmallIcon(android.R.drawable.stat_notify_sync)
+        b.setSmallIcon(R.drawable.ic_stat_xmode)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setOngoing(true)
@@ -1128,7 +1132,7 @@ public class MonitorService extends Service {
 
         // 通知栏快捷操作：立即投递 / 停止
         try {
-            Icon icon = Icon.createWithResource(this, android.R.drawable.stat_notify_sync);
+            Icon icon = Icon.createWithResource(this, R.drawable.ic_stat_xmode);
             Intent fire = new Intent(this, NotifyActionReceiver.class)
                     .setAction(NotifyActionReceiver.ACTION_FIRE);
             b.addAction(new Notification.Action.Builder(icon, "立即投递",
@@ -1175,7 +1179,7 @@ public class MonitorService extends Service {
             Notification.Builder b = Build.VERSION.SDK_INT >= 26
                     ? new Notification.Builder(this, CH_LIVE)
                     : new Notification.Builder(this);
-            b.setSmallIcon(android.R.drawable.stat_notify_sync)
+            b.setSmallIcon(R.drawable.ic_stat_xmode)
                     .setContentTitle(title)
                     .setContentText(text)
                     .setOngoing(true)
@@ -1194,6 +1198,21 @@ public class MonitorService extends Service {
             Intent open = new Intent(this, MainActivity.class);
             open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             b.setContentIntent(PendingIntent.getActivity(this, 20, open, piFlags()));
+
+            // v1.6.11：展开卡也带按钮，和通知栏那路保持一致
+            try {
+                Icon ic = Icon.createWithResource(this, R.drawable.ic_stat_xmode);
+                Intent liveFire = new Intent(this, NotifyActionReceiver.class)
+                        .setAction(NotifyActionReceiver.ACTION_FIRE);
+                b.addAction(new Notification.Action.Builder(ic, "立即投递",
+                        PendingIntent.getBroadcast(this, 21, liveFire, piFlags())).build());
+                Intent liveStop = new Intent(this, NotifyActionReceiver.class)
+                        .setAction(NotifyActionReceiver.ACTION_STOP);
+                b.addAction(new Notification.Action.Builder(ic, "停止",
+                        PendingIntent.getBroadcast(this, 22, liveStop, piFlags())).build());
+            } catch (Throwable t) {
+                Log.w(TAG, "live card actions failed", t);
+            }
 
             Notification n = b.build();
             n.flags |= Notification.FLAG_ONGOING_EVENT;
@@ -1229,6 +1248,18 @@ public class MonitorService extends Service {
                     .getBoolean(KEY_LIVE_CARD, true);
         } catch (Throwable t) {
             return true;
+        }
+    }
+
+    /** v1.6.10：撤掉实时卡片（服务停止、崩溃残留、force-stop 后由界面兜底调用）。 */
+    public static void cancelLiveCard(Context c) {
+        try {
+            NotificationManager nm = (NotificationManager)
+                    c.getApplicationContext().getSystemService(NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.cancel(LIVE_ID);
+            }
+        } catch (Throwable ignored) {
         }
     }
 

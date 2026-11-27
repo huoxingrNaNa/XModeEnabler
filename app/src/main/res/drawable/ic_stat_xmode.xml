@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- v1.6.11：状态栏小图标（单色白，胶囊 / 通知栏共用）。
+     之前用系统通用的同步图标，胶囊上几乎看不出是哪个应用。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13,2L4,14h6l-1,8l9,-12h-6z" />
+</vector>
